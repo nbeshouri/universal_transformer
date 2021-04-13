@@ -14,28 +14,6 @@ os.environ['KMP_DUPLICATE_LIB_OK'] = 'True'
 class ModelBase:
     name = None
 
-    # def __init__(self, **kwargs):
-    #     pass
-
-# class Simple(nn.Module, ModelBase):
-#
-#     name = "simple"
-#
-#     def __init__(self, embedding_matrix=None, hidden_size=128, **kwargs):
-#         super().__init__(**kwargs)
-#         self.embedding = nn.Embedding.from_pretrained(
-#             torch.FloatTensor(embedding_matrix)
-#         )
-#         self.encoder = nn.LSTM(hidden_size, hidden_size, batch_first=True)
-#         self.decoder = nn.LSTM(hidden_size, hidden_size, batch_first=True)
-#         self.classifier = nn.Linear(hidden_size, 2)
-#
-#     def forward(self, input_ids=None, target_ids=None):
-#         x = self.embbeding(input_ids)
-#         _, hidden = self.encoder_rnn(x)
-#
-#         return output
-
 
 class Vanilla(nn.Module, ModelBase):
     name = "vanilla"
@@ -58,7 +36,15 @@ class Vanilla(nn.Module, ModelBase):
         tgt = tgt.permute(1, 0, 2)
         tgt = self.postional_embedding(tgt)
         src = self.postional_embedding(src)
-        x = self.transformer(src=src, tgt=tgt, src_key_padding_mask=1 - src_key_padding_mask, tgt_key_padding_mask=1 - tgt_key_padding_mask)
+        # TODO: Needs to be moved to the device.
+        decoder_att_mask = self.transformer.generate_square_subsequent_mask(tgt.size(0))
+        x = self.transformer(
+            src=src,
+            tgt=tgt,
+            tgt_mask=decoder_att_mask,
+            src_key_padding_mask=1 - src_key_padding_mask,
+            tgt_key_padding_mask=1 - tgt_key_padding_mask,
+        )
         x = x.permute(1, 0, 2)
         x = self.output_linear(x)
         return x

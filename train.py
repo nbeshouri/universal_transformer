@@ -41,14 +41,14 @@ def run_model_on_dataset(
     for i, batch in enumerate(dataloader):
         device = torch.device(config.device)
         batch = tuple(t.to(device) for t in batch)
-
+        input_ids, output_ids, input_id_padding_mask, output_ids_padding_mask = batch
         batch_logits = model(
-            src=batch[0],
-            tgt=batch[1],
-            src_key_padding_mask=batch[2],
-            tgt_key_padding_mask=batch[3]
+            src=input_ids,
+            tgt=output_ids[:, :-1],
+            src_key_padding_mask=input_id_padding_mask,
+            tgt_key_padding_mask=output_ids_padding_mask[:, :-1]
         )
-        loss = criterion(batch_logits.view(-1, batch_logits.size(-1)), batch[1].view(-1))
+        loss = criterion(batch_logits.view(-1, batch_logits.size(-1)), output_ids[:, 1:].reshape(-1))
 
         total_loss += loss.item() * len(batch[0])  # Convert from mean to sum.
 
