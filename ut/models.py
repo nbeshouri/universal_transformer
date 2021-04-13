@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import wandb
+import math
 from transformers import *
 
 from ut import utils
@@ -47,6 +48,7 @@ class Vanilla(nn.Module, ModelBase):
         self.embedding = nn.Embedding.from_pretrained(
             torch.FloatTensor(embedding_matrix)
         )
+        self.postional_embedding = PositionalEncoding(d_model=self.embedding_size, dropout=0)
         self.output_linear = nn.Linear(self.embedding_size, self.vocab_size)
 
     def forward(self, *, src, tgt, src_key_padding_mask=None, tgt_key_padding_mask=None):
@@ -54,10 +56,31 @@ class Vanilla(nn.Module, ModelBase):
         tgt = self.embedding(tgt)
         src = src.permute(1, 0, 2)
         tgt = tgt.permute(1, 0, 2)
+        tgt = self.postional_embedding(tgt)
+        src = self.postional_embedding(src)
         x = self.transformer(src=src, tgt=tgt, src_key_padding_mask=1 - src_key_padding_mask, tgt_key_padding_mask=1 - tgt_key_padding_mask)
         x = x.permute(1, 0, 2)
         x = self.output_linear(x)
         return x
+
+
+class PositionalEncoding(nn.Module):
+
+    def __init__(self, d_model, dropout=0.1, max_len=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer('pe', pe)
+
+    def forward(self, x):
+        x = x + self.pe[:x.size(0), :]
+        return self.dropout(x)
 
 
 def get_model(config, embedding_matrix=None):
