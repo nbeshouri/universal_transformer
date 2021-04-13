@@ -1,10 +1,10 @@
-from ut import utils
-import torch
 import os
 import re
 
-from torch.utils.data import DataLoader, RandomSampler, TensorDataset
-from . import DATA_DIR_PATH, tokenizers
+import torch
+from torch.utils.data import TensorDataset
+
+from ut import DATA_DIR_PATH, utils
 
 
 class DatasetBase:

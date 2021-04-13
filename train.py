@@ -3,19 +3,20 @@
 
 import argparse
 import os
+from collections import defaultdict
 from time import perf_counter
 
+import numpy as np
+import pandas as pd
 import seaborn as sns
 import torch
 import wandb
+from torch import nn
 from torch.optim import RMSprop
 from torch.optim.adam import Adam
-from transformers import get_linear_schedule_with_warmup
-from collections import defaultdict
 from torch.utils.data import DataLoader
-from torch import nn
-import numpy as np
-import pandas as pd
+from transformers import get_linear_schedule_with_warmup
+
 from ut import datasets, models, tokenizers, vectors
 
 sns.set()
