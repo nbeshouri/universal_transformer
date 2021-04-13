@@ -31,6 +31,7 @@ class VectorsBase:
 class SpacyVectors(VectorsBase):
     def __init__(self, **kwargs):
         import spacy
+
         self.spacy_model = spacy.load(self.name)
         super().__init__(**kwargs)
 

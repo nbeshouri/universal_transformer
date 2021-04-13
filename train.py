@@ -46,9 +46,11 @@ def run_model_on_dataset(
             src=input_ids,
             tgt=output_ids[:, :-1],
             src_key_padding_mask=input_id_padding_mask,
-            tgt_key_padding_mask=output_ids_padding_mask[:, :-1]
+            tgt_key_padding_mask=output_ids_padding_mask[:, :-1],
         )
-        loss = criterion(batch_logits.view(-1, batch_logits.size(-1)), output_ids[:, 1:].reshape(-1))
+        loss = criterion(
+            batch_logits.view(-1, batch_logits.size(-1)), output_ids[:, 1:].reshape(-1)
+        )
 
         total_loss += loss.item() * len(batch[0])  # Convert from mean to sum.
 
@@ -143,9 +145,7 @@ def train(config, run):
             with torch.no_grad():
                 start_time = perf_counter()
                 logits, preds, label_ids, loss = iter(
-                    next(
-                        run_model_on_dataset(model, data.val, config, yield_freq=None)
-                    )
+                    next(run_model_on_dataset(model, data.val, config, yield_freq=None))
                 )
                 val_metrics = compute_metrics(
                     logits=logits,
@@ -176,6 +176,7 @@ def train(config, run):
         )
         artifact.add_file(TEMP_WEIGHTS_PATH)
         run.log_artifact(artifact)
+
 
 def log_step(
     run_type,
@@ -280,9 +281,7 @@ def train(config, run):
             with torch.no_grad():
                 start_time = perf_counter()
                 logits, preds, label_ids, loss = iter(
-                    next(
-                        run_model_on_dataset(model, data.val, config, yield_freq=None)
-                    )
+                    next(run_model_on_dataset(model, data.val, config, yield_freq=None))
                 )
                 val_metrics = compute_metrics(
                     logits=logits,

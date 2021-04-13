@@ -15,10 +15,12 @@ import numpy as np
 from . import transforms
 import joblib
 
-data_dir_path = os.path.join(os.path.dirname(__file__), 'data')
-_babi_1K_path = os.path.join(data_dir_path, 'tasks_1-20_v1-2', 'en')
-_babi_10K_path = os.path.join(data_dir_path, 'tasks_1-20_v1-2', 'en-10k')
-joblib_cache_dir_path = os.path.join(data_dir_path, f'joblib_cache_{socket.gethostname()}')
+data_dir_path = os.path.join(os.path.dirname(__file__), "data")
+_babi_1K_path = os.path.join(data_dir_path, "tasks_1-20_v1-2", "en")
+_babi_10K_path = os.path.join(data_dir_path, "tasks_1-20_v1-2", "en-10k")
+joblib_cache_dir_path = os.path.join(
+    data_dir_path, f"joblib_cache_{socket.gethostname()}"
+)
 memory = joblib.Memory(cachedir=joblib_cache_dir_path)
 
 
@@ -26,10 +28,10 @@ def _read_babi_lines(path):
     story_lines = []
     with open(path) as f:
         for line in f:
-            line_num = int(line.split(' ')[0])
+            line_num = int(line.split(" ")[0])
             if line_num == 1 and story_lines:
                 story_lines = []
-            if '?' in line:
+            if "?" in line:
                 yield story_lines, line
             else:
                 story_lines.append(line)
@@ -39,31 +41,31 @@ def load_task(task_num, version, folder_path):
     """
     Creates a set of QA tuples for a given task.
     """
-    glob_path = os.path.join(folder_path, f'qa{task_num}_*{version}*')
+    glob_path = os.path.join(folder_path, f"qa{task_num}_*{version}*")
     task_path = glob(glob_path)[0]
 
     output = []
 
     for story_lines, question_line in _read_babi_lines(task_path):
-        # The hint line numbers include the question lines, which I'm 
-        # removing. So I here I match the hint to the line number and 
+        # The hint line numbers include the question lines, which I'm
+        # removing. So I here I match the hint to the line number and
         # remap to a 0 indexed value.
-        story_line_indices = [re.match('^\d+', line).group(0) for line in story_lines]
+        story_line_indices = [re.match("^\d+", line).group(0) for line in story_lines]
 
         # hint = re.search(r'\d+$', question_line)
         # hint = hint.group(0)
         # hint = story_line_indices.index(hint)
 
-        hints = re.findall(f'\d+', question_line)
+        hints = re.findall(f"\d+", question_line)
         hints = hints[1:]  # First is line number.
         hints = [story_line_indices.index(hint) for hint in hints]
 
-        story = ''.join(story_lines)
-        story = story.replace('\n', ' ')
-        story = re.sub(r'\d+\s', r'', story)
+        story = "".join(story_lines)
+        story = story.replace("\n", " ")
+        story = re.sub(r"\d+\s", r"", story)
 
-        question, answer, _ = question_line.split('\t')
-        question = re.sub(r'\d+\s', r'', question)
+        question, answer, _ = question_line.split("\t")
+        question = re.sub(r"\d+\s", r"", question)
         output.append((story, question, answer, hints))
 
     return output
@@ -103,21 +105,21 @@ def get_embeddings(texts, min_vocab_size=0):
             data_vocab.add(token)
 
     word_to_vec = {}
-    embeddings_path = os.path.join(data_dir_path, 'glove.6B/glove.6B.200d.txt')
+    embeddings_path = os.path.join(data_dir_path, "glove.6B/glove.6B.200d.txt")
     with open(embeddings_path) as f:
         for line_num, line in enumerate(f):
             values = line.split()
             word = values[0]
             if min_vocab_size < line_num + 1 and word not in data_vocab:
                 continue
-            vector = np.asarray(values[1:], dtype='float32')
+            vector = np.asarray(values[1:], dtype="float32")
             word_to_vec[word] = vector
 
     # TODO: Variables redundant and unclear. Total vocab should mean
     # total vocab.
     total_vocab = data_vocab | set(word_to_vec.keys())
     rand_state = np.random.RandomState(42)
-    word_to_id = {'<PAD>': 0, '<EOS>': 1, '<START>': 2}
+    word_to_id = {"<PAD>": 0, "<EOS>": 1, "<START>": 2}
     num_meta_tokens = 3
     embedding_matrix = rand_state.rand(len(total_vocab) + num_meta_tokens, 200)
     embedding_matrix[0] = 0
@@ -135,7 +137,7 @@ def get_embeddings(texts, min_vocab_size=0):
 
 def ids_to_text(ids, id_to_word):
     tokens = [id_to_word[id] for id in ids]
-    return ' '.join(tokens)
+    return " ".join(tokens)
 
 
 def id_lists_to_texts(id_lists, id_to_word):
@@ -144,7 +146,7 @@ def id_lists_to_texts(id_lists, id_to_word):
 
 def answer_ids_to_text(ids, id_to_word):
     text = ids_to_text(ids, id_to_word)
-    text = text.split('<EOS>')[0]
+    text = text.split("<EOS>")[0]
     return text.strip()
 
 
@@ -163,35 +165,40 @@ def get_train_val_test(train_sqas, test_sqas, task_subset=None):
 
     for task_sqas, task_num in zip(test_sqas, task_subset):
         _, val_indices, test_indices = get_train_val_test_indices(
-            len(task_sqas), val_ratio=0.50, test_ratio=0.50, seed=42 + task_num)
+            len(task_sqas), val_ratio=0.50, test_ratio=0.50, seed=42 + task_num
+        )
         flat_val_sqas.extend(task_sqas[val_indices])
         flat_test_sqas.extend(task_sqas[test_indices])
 
     def process_sqas(sqas):
         stories, questions, awnswers, hints = zip(*sqas)
-        stories, questions, awnswers = map(transforms.tokenize_texts, [stories, questions, awnswers])
+        stories, questions, awnswers = map(
+            transforms.tokenize_texts, [stories, questions, awnswers]
+        )
         token_sqas = tuple(map(np.array, [stories, questions, awnswers, hints]))
         return token_sqas
 
-    train_stories, train_questions, train_answers, train_hints = process_sqas(flat_train_sqas)
+    train_stories, train_questions, train_answers, train_hints = process_sqas(
+        flat_train_sqas
+    )
     val_stories, val_questions, val_answers, val_hints = process_sqas(flat_val_sqas)
-    test_stories, test_questions, test_answers, test_hints = process_sqas(flat_test_sqas)
+    test_stories, test_questions, test_answers, test_hints = process_sqas(
+        flat_test_sqas
+    )
 
     data = Munch(
         X_train_stories=train_stories,
         X_train_questions=train_questions,
         train_hints=train_hints,
         y_train=train_answers,
-
         X_val_stories=val_stories,
         X_val_questions=val_questions,
         val_hints=val_hints,
         y_val=val_answers,
-
         X_test_stories=test_stories,
         X_test_questions=test_questions,
         test_hints=test_hints,
-        y_test=test_answers
+        y_test=test_answers,
     )
 
     return data
@@ -228,7 +235,7 @@ def texts_to_ids(texts, word_to_id, max_sequence_length=None):
     X = np.zeros((len(texts), max_sequence_length), dtype=int)
     for i, text_ids in enumerate(texts_ids):
         text_ids = text_ids[:max_sequence_length]
-        X[i, :len(text_ids)] = text_ids
+        X[i, : len(text_ids)] = text_ids
 
     return X
 
@@ -241,8 +248,9 @@ def align_padding(*id_matrices, forced_length=None):
     output = []
     for matrix in id_matrices:
         padding_needed = max_row_len - matrix.shape[1]
-        padded_matrix = np.pad(matrix, ((0, 0), (0, padding_needed)),
-                               'constant', constant_values=(0, 0))
+        padded_matrix = np.pad(
+            matrix, ((0, 0), (0, padding_needed)), "constant", constant_values=(0, 0)
+        )
         output.append(padded_matrix)
     return output
 
@@ -258,9 +266,11 @@ def get_train_val_test_indices(num_rows, val_ratio=0.25, test_ratio=0.25, seed=4
     rand = np.random.RandomState(seed)
     indices = rand.permutation(range(num_rows))
     train_ratio = 1 - val_ratio - test_ratio
-    train_indices = indices[:int(len(indices) * train_ratio)]
-    val_indices = indices[len(train_indices):len(train_indices) + int(len(indices) * val_ratio)]
-    test_indices = indices[len(train_indices) + len(val_indices):]
+    train_indices = indices[: int(len(indices) * train_ratio)]
+    val_indices = indices[
+        len(train_indices) : len(train_indices) + int(len(indices) * val_ratio)
+    ]
+    test_indices = indices[len(train_indices) + len(val_indices) :]
     return train_indices, val_indices, test_indices
 
 
@@ -301,8 +311,8 @@ def get_babi_embeddings(use_10k=False, min_vocab_size=0):
     # I want the word indices to be the same in all task data
     # sets.
     babi_path = _babi_10K_path if use_10k else _babi_1K_path
-    train_tasks = load_tasks('train', babi_path)
-    test_tasks = load_tasks('test', babi_path)
+    train_tasks = load_tasks("train", babi_path)
+    test_tasks = load_tasks("test", babi_path)
 
     # Don't tokenize the hints.
     train_tasks = [t[:-1] for t in chain(*train_tasks)]
@@ -344,7 +354,9 @@ def align_story_sents(*story_sets, num_sents=None, sent_length=None):
             for sent_num, sent in enumerate(story):
                 sent_pad = num_sents - len(story)
                 word_pad = sent_length - len(sent)
-                story_set_array[story_num, sent_num + sent_pad, word_pad:len(sent) + word_pad] = sent
+                story_set_array[
+                    story_num, sent_num + sent_pad, word_pad : len(sent) + word_pad
+                ] = sent
         output.append(story_set_array)
 
     return output
@@ -364,55 +376,96 @@ def get_sent_hints(stories, hints):
 
 
 # @memory.cache
-def get_babi_data(task_subset=None, use_10k=False, forced_story_length=None,
-                  forced_question_length=None, forced_answer_length=None,
-                  forced_num_sents=None, forced_sent_length=None):
+def get_babi_data(
+    task_subset=None,
+    use_10k=False,
+    forced_story_length=None,
+    forced_question_length=None,
+    forced_answer_length=None,
+    forced_num_sents=None,
+    forced_sent_length=None,
+):
     babi_path = _babi_10K_path if use_10k else _babi_1K_path
-    train_tasks = load_tasks('train', babi_path, task_subset)
-    test_tasks = load_tasks('test', babi_path, task_subset)
+    train_tasks = load_tasks("train", babi_path, task_subset)
+    test_tasks = load_tasks("test", babi_path, task_subset)
     data = get_train_val_test(train_tasks, test_tasks, task_subset)
 
-    data.word_to_vec, data.word_to_id, data.embedding_matrix = get_babi_embeddings(use_10k)
+    data.word_to_vec, data.word_to_id, data.embedding_matrix = get_babi_embeddings(
+        use_10k
+    )
     data.id_to_word = {id: word for word, id in data.word_to_id.items()}
 
     # Convert lists of texts to lists of lists of word ids.
-    keys = [key for key in data.keys() if ('X_' in key or 'y_' in key) and 'hint' not in key]
+    keys = [
+        key for key in data.keys() if ("X_" in key or "y_" in key) and "hint" not in key
+    ]
     for key in keys:
         data[key] = texts_to_ids(data[key], data.word_to_id)
 
     data.X_train_stories, data.X_val_stories, data.X_test_stories = align_padding(
-        data.X_train_stories, data.X_val_stories, data.X_test_stories,
-        forced_length=forced_story_length)
+        data.X_train_stories,
+        data.X_val_stories,
+        data.X_test_stories,
+        forced_length=forced_story_length,
+    )
     data.X_train_questions, data.X_val_questions, data.X_test_questions = align_padding(
-        data.X_train_questions, data.X_val_questions, data.X_test_questions,
-        forced_length=forced_question_length)
+        data.X_train_questions,
+        data.X_val_questions,
+        data.X_test_questions,
+        forced_length=forced_question_length,
+    )
     data.y_train, data.y_val, data.y_test = align_padding(
-        data.y_train, data.y_val, data.y_test, forced_length=forced_answer_length)
+        data.y_train, data.y_val, data.y_test, forced_length=forced_answer_length
+    )
 
     data.X_train_decoder = get_time_shifted(data.y_train)
     data.X_val_decoder = get_time_shifted(data.y_val)
     data.X_test_decoder = get_time_shifted(data.y_test)
 
     # Add sentence masks.
-    end_of_sentence_symbol = data.word_to_id['.']
-    data.X_train_story_masks = get_sentence_masks(data.X_train_stories, end_of_sentence_symbol)
-    data.X_val_story_masks = get_sentence_masks(data.X_val_stories, end_of_sentence_symbol)
-    data.X_test_story_masks = get_sentence_masks(data.X_test_stories, end_of_sentence_symbol)
+    end_of_sentence_symbol = data.word_to_id["."]
+    data.X_train_story_masks = get_sentence_masks(
+        data.X_train_stories, end_of_sentence_symbol
+    )
+    data.X_val_story_masks = get_sentence_masks(
+        data.X_val_stories, end_of_sentence_symbol
+    )
+    data.X_test_story_masks = get_sentence_masks(
+        data.X_test_stories, end_of_sentence_symbol
+    )
 
     # Expand attention hints.
-    data.X_train_hints = get_hint_masks(data.X_train_stories, data.train_hints, end_of_sentence_symbol)
-    data.X_val_hints = get_hint_masks(data.X_val_stories, data.val_hints, end_of_sentence_symbol)
-    data.X_test_hints = get_hint_masks(data.X_test_stories, data.test_hints, end_of_sentence_symbol)
+    data.X_train_hints = get_hint_masks(
+        data.X_train_stories, data.train_hints, end_of_sentence_symbol
+    )
+    data.X_val_hints = get_hint_masks(
+        data.X_val_stories, data.val_hints, end_of_sentence_symbol
+    )
+    data.X_test_hints = get_hint_masks(
+        data.X_test_stories, data.test_hints, end_of_sentence_symbol
+    )
 
     # Add sentence versions of stories.
-    data.X_train_story_sents = get_story_sents(data.X_train_stories, end_of_sentence_symbol)
+    data.X_train_story_sents = get_story_sents(
+        data.X_train_stories, end_of_sentence_symbol
+    )
     data.X_val_story_sents = get_story_sents(data.X_val_stories, end_of_sentence_symbol)
-    data.X_test_story_sents = get_story_sents(data.X_test_stories, end_of_sentence_symbol)
+    data.X_test_story_sents = get_story_sents(
+        data.X_test_stories, end_of_sentence_symbol
+    )
 
     # Pad them.
-    data.X_train_story_sents, data.X_val_story_sents, data.X_test_story_sents = align_story_sents(
-        data.X_train_story_sents, data.X_val_story_sents, data.X_test_story_sents,
-        num_sents=forced_num_sents, sent_length=forced_sent_length)
+    (
+        data.X_train_story_sents,
+        data.X_val_story_sents,
+        data.X_test_story_sents,
+    ) = align_story_sents(
+        data.X_train_story_sents,
+        data.X_val_story_sents,
+        data.X_test_story_sents,
+        num_sents=forced_num_sents,
+        sent_length=forced_sent_length,
+    )
 
     data.y_train_att = get_sent_hints(data.X_train_story_sents, data.train_hints)
     data.y_val_att = get_sent_hints(data.X_val_story_sents, data.val_hints)
