@@ -79,7 +79,9 @@ def get_dataset(config, tokenizer=None):
             accepted_args = set(sub.__init__.__code__.co_varnames)
             accepted_args.remove("self")
             kwargs = {
-                k.replace("dataset.", ""): v for k, v in config.items() if "dataset." in k
+                k.replace("dataset.", ""): v
+                for k, v in config.items()
+                if "dataset." in k
             }
             kwargs["tokenizer"] = tokenizer
             return sub(**kwargs)

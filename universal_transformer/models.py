@@ -14,8 +14,7 @@ class ModelBase:
     name = None
 
 
-class TransformerBaseModel(nn.Module, ModelBase):
-    name = None
+class TransformerModelBase(nn.Module, ModelBase):
     transformer_class = None
 
     def __init__(self, embedding_matrix, **kwargs):
@@ -72,12 +71,12 @@ class TransformerBaseModel(nn.Module, ModelBase):
         return output
 
 
-class VanillaTransformerModel(TransformerBaseModel):
+class VanillaTransformerModel(TransformerModelBase):
     name = "vanilla_transformer"
     transformer_class = nn.Transformer
 
 
-class TransformerBase(TransformerBaseModel):
+class TransformerBase(TransformerModelBase):
     name = "universal_transformer"
     transformer_class = UniversalTransformer
 
