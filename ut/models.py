@@ -3,10 +3,8 @@ import os
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import wandb
-from transformers import *
 
+from ut.universal_transformer import UniversalTransformer
 from ut import utils
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
@@ -16,14 +14,15 @@ class ModelBase:
     name = None
 
 
-class Vanilla(nn.Module, ModelBase):
-    name = "vanilla"
+class TransformerBaseModel(nn.Module, ModelBase):
+    name = None
+    transformer_class = None
 
     def __init__(self, embedding_matrix, **kwargs):
         super().__init__()
         self.embedding_size = embedding_matrix.shape[1]
         self.vocab_size = embedding_matrix.shape[0]
-        self.transformer = nn.Transformer(
+        self.transformer = self.transformer_class(
             d_model=self.embedding_size, nhead=5, **kwargs
         )
         self.embedding = nn.Embedding.from_pretrained(
@@ -33,6 +32,11 @@ class Vanilla(nn.Module, ModelBase):
             d_model=self.embedding_size, dropout=0
         )
         self.output_linear = nn.Linear(self.embedding_size, self.vocab_size)
+        self._dummy_param = nn.Parameter(torch.empty(0))
+
+    @property
+    def device(self):
+        return self._dummy_param.device
 
     def forward(
         self, *, src, tgt, src_key_padding_mask=None, tgt_key_padding_mask=None
@@ -43,8 +47,8 @@ class Vanilla(nn.Module, ModelBase):
         tgt = tgt.permute(1, 0, 2)
         tgt = self.postional_embedding(tgt)
         src = self.postional_embedding(src)
-        # TODO: Needs to be moved to the device.
         decoder_att_mask = self.transformer.generate_square_subsequent_mask(tgt.size(0))
+        decoder_att_mask.to(self.device)
         x = self.transformer(
             src=src,
             tgt=tgt,
@@ -55,6 +59,16 @@ class Vanilla(nn.Module, ModelBase):
         x = x.permute(1, 0, 2)
         x = self.output_linear(x)
         return x
+
+
+class VanillaTransformerModel(TransformerBaseModel):
+    name = "vanilla_transformer"
+    transformer_class = nn.Transformer
+
+
+class TransformerBase(TransformerBaseModel):
+    name = "universal_transformer"
+    transformer_class = UniversalTransformer
 
 
 class PositionalEncoding(nn.Module):

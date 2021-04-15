@@ -1,6 +1,3 @@
-# TODO: So the seq_length_max property is not being respected.
-# and that x = self.embbeding(input_ids) isn't working.
-
 import argparse
 import os
 from collections import defaultdict

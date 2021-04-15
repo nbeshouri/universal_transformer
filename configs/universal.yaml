@@ -8,7 +8,7 @@ vectors:
 dataset:
   value: 'babi'
 model:
-  value: 'vanilla_transformer'
+  value: 'universal_transformer'
 optimizer:
   value: 'adam'
 epochs:
