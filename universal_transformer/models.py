@@ -4,8 +4,8 @@ import os
 import torch
 import torch.nn as nn
 
-from final_project.universal_transformer import UniversalTransformer
-from final_project import utils
+from universal_transformer.universal_transformer import UniversalTransformer
+from universal_transformer import utils
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 

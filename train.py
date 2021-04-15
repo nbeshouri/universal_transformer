@@ -13,7 +13,7 @@ from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
-from final_project import datasets, models, tokenizers, vectors, logger
+from universal_transformer import datasets, models, tokenizers, vectors, logger
 
 
 TEMP_WEIGHTS_PATH = "state_dict.pickle"

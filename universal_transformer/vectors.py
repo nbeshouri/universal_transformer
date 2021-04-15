@@ -1,6 +1,6 @@
 import numpy as np
 
-from final_project import utils
+from universal_transformer import utils
 
 
 class VectorsBase:

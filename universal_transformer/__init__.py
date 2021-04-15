@@ -13,7 +13,7 @@ def _setup_logger():
     )
     handler = logging.StreamHandler(stream=sys.stdout)
     handler.setFormatter(formatter)
-    logger = logging.getLogger("final_project")
+    logger = logging.getLogger("universal_transformer")
     logger.setLevel(logging.INFO)
     logger.addHandler(handler)
     return logger

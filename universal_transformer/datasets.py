@@ -4,7 +4,7 @@ import re
 import torch
 from torch.utils.data import TensorDataset
 
-from final_project import DATA_DIR_PATH, utils
+from universal_transformer import DATA_DIR_PATH, utils
 
 
 class DatasetBase:
