@@ -1,8 +1,6 @@
 from collections import Counter
 from itertools import chain
 
-from transformers import *
-
 from universal_transformer import utils
 
 
@@ -168,14 +166,4 @@ def get_tokenizer(config):
             # that otherwise modify things.
             return sub()
 
-    try:
-        hugging_face_tokenizer = AutoTokenizer.from_pretrained(config.tokenizer)
-        HuggingFaceTokenizer(hugging_face_tokenizer, config.tokenizer)
-    except OSError:
-        pass
-
     raise ValueError("Tokenizer not found!")
-
-
-# TODO for next time: You need to make that subclass search thing
-#  recursive. Also, like, you need to
