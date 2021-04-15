@@ -27,6 +27,9 @@ class TransformerModelBase(nn.Module, ModelBase):
         self.embedding = nn.Embedding.from_pretrained(
             torch.FloatTensor(embedding_matrix)
         )
+        # TODO: This needs to go inside the UT, but
+        # transformer still needs it. Probably need to
+        # wrap the transformer.
         self.postional_embedding = PositionalEncoding(
             d_model=self.embedding_size, dropout=0
         )

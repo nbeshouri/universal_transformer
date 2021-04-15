@@ -43,7 +43,7 @@ class UniversalTransformerEncoder(nn.Module):
             see the docs in Transformer class.
 
         """
-
+        # TODO: Position embedding, Timing embedding, dynamic halting.
         for step in range(self.max_steps):
             scr2 = self.self_attn(
                 src, src, src, attn_mask=mask, key_padding_mask=src_key_padding_mask
@@ -97,6 +97,7 @@ class UniversalTransformerDecoder(nn.Module):
         Shape:
             see the docs in Transformer class.
         """
+        # TODO: Position embedding, Timing embedding, dynamic halting.
         for step in range(self.max_steps):
             tgt2 = self.self_attn(
                 tgt, tgt, tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask
