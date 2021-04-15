@@ -3,7 +3,7 @@ from itertools import chain
 
 from transformers import *
 
-from ut import utils
+from final_project import utils
 
 
 class TokenizerBase:

@@ -4,8 +4,8 @@ import os
 import torch
 import torch.nn as nn
 
-from ut.universal_transformer import UniversalTransformer
-from ut import utils
+from final_project.universal_transformer import UniversalTransformer
+from final_project import utils
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
@@ -39,26 +39,37 @@ class TransformerBaseModel(nn.Module, ModelBase):
         return self._dummy_param.device
 
     def forward(
-        self, *, src, tgt, src_key_padding_mask=None, tgt_key_padding_mask=None
+        self,
+        *,
+        source_ids,
+        target_ids,
+        source_padding_mask=None,
+        target_padding_mask=None
     ):
-        src = self.embedding(src)
-        tgt = self.embedding(tgt)
-        src = src.permute(1, 0, 2)
-        tgt = tgt.permute(1, 0, 2)
-        tgt = self.postional_embedding(tgt)
-        src = self.postional_embedding(src)
-        decoder_att_mask = self.transformer.generate_square_subsequent_mask(tgt.size(0))
-        decoder_att_mask.to(self.device)
-        x = self.transformer(
-            src=src,
-            tgt=tgt,
-            tgt_mask=decoder_att_mask,
-            src_key_padding_mask=1 - src_key_padding_mask,
-            tgt_key_padding_mask=1 - tgt_key_padding_mask,
+        source_ids = self.embedding(source_ids)
+        target_ids = self.embedding(target_ids)
+
+        source_ids = source_ids.permute(1, 0, 2)
+        target_ids = target_ids.permute(1, 0, 2)
+
+        target_ids = self.postional_embedding(target_ids)
+        source_ids = self.postional_embedding(source_ids)
+
+        decoder_att_mask = self.transformer.generate_square_subsequent_mask(
+            target_ids.size(0)
         )
-        x = x.permute(1, 0, 2)
-        x = self.output_linear(x)
-        return x
+        decoder_att_mask.to(self.device)
+
+        output = self.transformer(
+            src=source_ids,
+            tgt=target_ids,
+            tgt_mask=decoder_att_mask,
+            src_key_padding_mask=1 - source_padding_mask,  # It things 1 means ignore.
+            tgt_key_padding_mask=1 - target_padding_mask,
+        )
+        output = output.permute(1, 0, 2)
+        output = self.output_linear(output)
+        return output
 
 
 class VanillaTransformerModel(TransformerBaseModel):

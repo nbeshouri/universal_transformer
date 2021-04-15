@@ -5,7 +5,6 @@ from time import perf_counter
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import torch
 import wandb
 from torch import nn
@@ -14,9 +13,7 @@ from torch.optim.adam import Adam
 from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
-from ut import datasets, models, tokenizers, vectors
-
-sns.set()
+from final_project import datasets, models, tokenizers, vectors, logger
 
 
 TEMP_WEIGHTS_PATH = "state_dict.pickle"
@@ -39,12 +36,12 @@ def run_model_on_dataset(
     for i, batch in enumerate(dataloader):
         device = torch.device(config.device)
         batch = tuple(t.to(device) for t in batch)
-        input_ids, output_ids, input_id_padding_mask, output_ids_padding_mask = batch
+        input_ids, output_ids, input_ids_padding_mask, output_ids_padding_mask = batch
         batch_logits = model(
-            src=input_ids,
-            tgt=output_ids[:, :-1],
-            src_key_padding_mask=input_id_padding_mask,
-            tgt_key_padding_mask=output_ids_padding_mask[:, :-1],
+            source_ids=input_ids,
+            target_ids=output_ids[:, :-1],
+            source_padding_mask=input_ids_padding_mask,
+            target_padding_mask=output_ids_padding_mask[:, :-1],
         )
         loss = criterion(
             batch_logits.view(-1, batch_logits.size(-1)), output_ids[:, 1:].reshape(-1)
@@ -185,7 +182,7 @@ def log_step(
     log_dict = {f"{run_type}_{k}": v for k, v in metrics.items()}
     if epoch is not None:
         log_dict["epoch"] = epoch
-    print(log_dict)
+    logger.info(log_dict)
     wandb.log(log_dict, **kwargs)
 
     _step_metrics[run_type].append(metrics)
