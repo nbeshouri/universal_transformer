@@ -4,8 +4,11 @@ import os
 import torch
 import torch.nn as nn
 
-from universal_transformer.universal_transformer import UniversalTransformer
 from universal_transformer import utils
+from universal_transformer.universal_transformer import (
+    UniversalTransformer,
+    VanillaTransformer,
+)
 
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
@@ -26,12 +29,6 @@ class TransformerModelBase(nn.Module, ModelBase):
         )
         self.embedding = nn.Embedding.from_pretrained(
             torch.FloatTensor(embedding_matrix)
-        )
-        # TODO: This needs to go inside the UT, but
-        # transformer still needs it. Probably need to
-        # wrap the transformer.
-        self.postional_embedding = PositionalEncoding(
-            d_model=self.embedding_size, dropout=0
         )
         self.output_linear = nn.Linear(self.embedding_size, self.vocab_size)
         self._dummy_param = nn.Parameter(torch.empty(0))
@@ -54,9 +51,6 @@ class TransformerModelBase(nn.Module, ModelBase):
         source_ids = source_ids.permute(1, 0, 2)
         target_ids = target_ids.permute(1, 0, 2)
 
-        target_ids = self.postional_embedding(target_ids)
-        source_ids = self.postional_embedding(source_ids)
-
         decoder_att_mask = self.transformer.generate_square_subsequent_mask(
             target_ids.size(0)
         )
@@ -74,12 +68,15 @@ class TransformerModelBase(nn.Module, ModelBase):
         return output
 
 
+# TODO: Do this with some kind of class decorator to register
+# and name of the model and pass in arguments rather than with
+# named subclasses (basically you named argument sets).
 class VanillaTransformerModel(TransformerModelBase):
     name = "vanilla_transformer"
-    transformer_class = nn.Transformer
+    transformer_class = VanillaTransformer
 
 
-class TransformerBase(TransformerModelBase):
+class UniversalTransformerModel(TransformerModelBase):
     name = "universal_transformer"
     transformer_class = UniversalTransformer
 
