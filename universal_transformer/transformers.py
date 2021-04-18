@@ -58,13 +58,13 @@ class UniversalTransformerEncoder(nn.Module):
             d_model=d_model, dropout=0, max_len=max_steps
         )
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
-        self.dropout1 = nn.Dropout(dropout)
-        self.norm1 = nn.LayerNorm(d_model)
+        self.dropout_1 = nn.Dropout(dropout)
+        self.norm_1 = nn.LayerNorm(d_model)
         self.transition = nn.Sequential(
             nn.Linear(d_model, d_model), nn.ReLU(), nn.Linear(d_model, d_model)
         )
-        self.dropout2 = nn.Dropout(dropout)
-        self.norm2 = nn.LayerNorm(d_model)
+        self.dropout_2 = nn.Dropout(dropout)
+        self.norm_2 = nn.LayerNorm(d_model)
 
     def forward(self, src, mask=None, src_key_padding_mask=None):
         r"""Pass the input through the encoder layer.
@@ -78,22 +78,25 @@ class UniversalTransformerEncoder(nn.Module):
             see the docs in Transformer class.
 
         """
-        # TODO: Position embedding, Timing embedding, dynamic halting.
 
-        def step_func(src, step):
-            src = self.positional_embedding(src)
-            src = self.temporal_embedding(src, step)
-            scr2 = self.self_attn(
-                src, src, src, attn_mask=mask, key_padding_mask=src_key_padding_mask
+        def step_func(state, step):
+            state = self.positional_embedding(state)
+            state = self.temporal_embedding(state, step)
+            state = self.self_attn(
+                state,
+                state,
+                state,
+                attn_mask=mask,
+                key_padding_mask=src_key_padding_mask,
             )[0]
-            src = src + self.dropout1(scr2)
+            state = state + self.dropout_1(state)
 
-            scr = self.norm1(src)
-            scr2 = self.transition(scr)
-            src = src + self.dropout2(scr2)
+            state = self.norm_1(state)
+            state = self.transition(state)
+            state = state + self.dropout_2(state)
 
-            src = self.norm2(src)
-            return src
+            state = self.norm_2(state)
+            return state
 
         return self._run_steps(src, step_func)
 
@@ -167,7 +170,7 @@ class UniversalTransformerEncoder(nn.Module):
             update_weights = ((p * still_running) + (new_halted * remainders)).unsqueeze(-1)
             # Run the step function and update new_state.
             state = step_func(state, step)
-            new_state = ((state * update_weights) + (new_state * (1 - update_weights)))
+            new_state = (state * update_weights) + (new_state * (1 - update_weights))
             step += 1
 
         return new_state
@@ -183,8 +186,8 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
             halting_threshold=halting_threshold,
         )
         self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
-        self.dropout3 = nn.Dropout(dropout)
-        self.norm3 = nn.LayerNorm(d_model)
+        self.dropout_3 = nn.Dropout(dropout)
+        self.norm_3 = nn.LayerNorm(d_model)
 
     def forward(
         self,
@@ -209,37 +212,36 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
             see the docs in Transformer class.
         """
         # TODO: Position embedding, Timing embedding, dynamic halting.
-        def step_func(tgt, step):
-            tgt = self.positional_embedding(tgt)
-            tgt = self.temporal_embedding(tgt, step)
-            tgt2 = self.self_attn(
-                tgt, tgt, tgt, attn_mask=tgt_mask, key_padding_mask=tgt_key_padding_mask
+        def step_func(state, step):
+            state = self.positional_embedding(state)
+            state = self.temporal_embedding(state, step)
+            state_2 = self.self_attn(
+                state,
+                state,
+                state,
+                attn_mask=tgt_mask,
+                key_padding_mask=tgt_key_padding_mask,
             )[0]
-            tgt = tgt + self.dropout1(tgt2)
+            state = state + self.dropout_1(state_2)
 
-            tgt = self.norm1(tgt)
-            tgt2 = self.multihead_attn(
-                tgt,
+            state = self.norm_1(state)
+            state_2 = self.multihead_attn(
+                state,
                 memory,
                 memory,
                 attn_mask=memory_mask,
                 key_padding_mask=memory_key_padding_mask,
             )[0]
-            tgt = tgt + self.dropout2(tgt2)
+            state = state + self.dropout_2(state_2)
 
-            tgt = self.norm2(tgt)
-            tgt2 = self.transition(tgt)
-            tgt = tgt + self.dropout3(tgt2)
+            state = self.norm_2(state)
+            state_2 = self.transition(state)
+            state = state + self.dropout_3(state_2)
 
-            tgt = self.norm3(tgt)
-            return tgt
+            state = self.norm_3(state)
+            return state
 
-        if self.halting_threshold is None:
-            tgt = self._run_fixed_loop(tgt, step_func)
-        else:
-            tgt = self._run_dynamic_halting_loop(tgt, step_func)
-
-        return tgt
+        return self._run_steps(tgt, step_func)
 
 
 class PositionalEncoding(nn.Module):

@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 
 from universal_transformer import utils
-from universal_transformer.universal_transformer import (
+from universal_transformer.transformers import (
     UniversalTransformer,
     VanillaTransformer,
 )
