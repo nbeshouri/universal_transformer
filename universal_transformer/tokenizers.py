@@ -1,12 +1,10 @@
 from collections import Counter
 from itertools import chain
 
-from universal_transformer import utils
+from universal_transformer.class_registry import registry, register_class
 
 
 class TokenizerBase:
-    name = None
-
     def __init__(
         self,
         *,
@@ -112,58 +110,22 @@ class TokenizerBase:
         " ".join(self.id_to_token[id] for id in ids)
 
 
+@register_class(("tokenizer", "en_core_web_md"), name="en_core_web_md", lower=True)
+@register_class(("tokenizer", "en_core_web_lg"), name="en_core_web_lg", lower=True)
 class SpacyTokenizer(TokenizerBase):
-    def __init__(self, **kwargs):
+    def __init__(self, name, **kwargs):
         super().__init__(**kwargs)
         import spacy
 
-        self.spacy_model = spacy.load(self.name)
+        self.spacy_model = spacy.load(name)
 
     def _tokenize(self, text):
         return tuple(token.text for token in self.spacy_model.tokenizer(text))
 
 
-class LargeEnglishSpacyTokenizer(SpacyTokenizer):
-    name = "en_core_web_lg"
-
-    def __init__(self):
-        super().__init__(lower=True)
-
-
-class MediumEnglishSpacyTokenizer(SpacyTokenizer):
-    name = "en_core_web_md"
-
-    def __init__(self):
-        super().__init__(lower=True)
-
-
-class HuggingFaceTokenizer(TokenizerBase):
-    def __init__(self, hugging_face_tokenizer, **kwargs):
-        super().__init__(**kwargs)
-        self.hugging_face_tokenizer = hugging_face_tokenizer
-
-    def fit(self, texts, max_tokens=None):
-        pass
-
-    def encode(self, text):
-        ids = self.hugging_face_tokenizer.encode(
-            text, max_length=self.seq_length_max, truncation=True
-        )
-        for _ in range(self.seq_length_max - len(ids)):
-            ids.append(0)
-        return ids
-
-    def decode(self, ids):
-        return self.hugging_face_tokenizer.decode(ids)
-
-
 def get_tokenizer(config):
-    for sub in utils.get_subclasses(TokenizerBase):
-        if sub.name == config.tokenizer:
-            # If necessary, could feed the relevant config stuff here.
-            # The basic idea is that the "name" of the tokenizer should
-            # be a class thing even if there might be config options
-            # that otherwise modify things.
-            return sub()
-
-    raise ValueError("Tokenizer not found!")
+    key = ("tokenizer", config.vectors)
+    if key in registry:
+        cls, kwargs = registry[key]
+        return cls(**kwargs)
+    raise KeyError("Tokenizer not found!")

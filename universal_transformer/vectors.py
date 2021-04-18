@@ -1,11 +1,9 @@
 import numpy as np
 
-from universal_transformer import utils
+from universal_transformer.class_registry import registry, register_class
 
 
 class VectorsBase:
-    name = None
-
     def __init__(self, *, token_to_id, special_tokens=None):
         self.dims = len(self._get_vector(next(iter(token_to_id.keys()))))
         self.token_to_id = token_to_id
@@ -29,31 +27,29 @@ class VectorsBase:
         return vectors
 
 
+@register_class(("vectors", "en_core_web_md"), name="en_core_web_md")
+@register_class(("vectors", "en_core_web_lg"), name="en_core_web_lg")
 class SpacyVectors(VectorsBase):
-    def __init__(self, **kwargs):
+    def __init__(self, name, **kwargs):
         import spacy
 
-        self.spacy_model = spacy.load(self.name)
+        self.spacy_model = spacy.load(name)
         super().__init__(**kwargs)
 
     def _get_vector(self, token):
         return self.spacy_model.tokenizer(token).vector
 
 
-class LargeEnglishSpacyVectors(SpacyVectors):
-    name = "en_core_web_lg"
-
-
-class MediumEnglishSpacyVectors(SpacyVectors):
-    name = "en_core_web_md"
-
-
 def get_vectors(config, tokenizer):
     if config.vectors is None:
         return None
-    for sub in utils.get_subclasses(VectorsBase):
-        if sub.name == config.vectors:
-            return sub(
-                token_to_id=tokenizer.token_to_id,
-                special_tokens=tokenizer.special_tokens,
-            ).get_vectors()
+    key = ("vectors", config.vectors)
+    if key in registry:
+        cls, kwargs = registry[key]
+        vectors_obj = cls(
+            token_to_id=tokenizer.token_to_id,
+            special_tokens=tokenizer.special_tokens,
+            **kwargs
+        )
+        return vectors_obj.get_vectors()
+    raise KeyError("Vectors not found!")

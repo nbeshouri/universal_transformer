@@ -4,7 +4,7 @@ import os
 import torch
 import torch.nn as nn
 
-from universal_transformer import utils
+from universal_transformer.class_registry import registry, register_class
 from universal_transformer.transformers import (
     UniversalTransformer,
     VanillaTransformer,
@@ -13,15 +13,14 @@ from universal_transformer.transformers import (
 os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
 
-class ModelBase:
-    name = None
-
-
-class TransformerModelBase(nn.Module, ModelBase):
+@register_class(("model", "vanilla_transformer"), transformer_class=VanillaTransformer)
+@register_class(("model", "universal_transformer"), transformer_class=UniversalTransformer)
+class TransformerModelBase(nn.Module):
     transformer_class = None
 
-    def __init__(self, embedding_matrix, **kwargs):
+    def __init__(self, embedding_matrix, transformer_class=None, **kwargs):
         super().__init__()
+        self.transformer_class = transformer_class
         self.embedding_size = embedding_matrix.shape[1]
         self.vocab_size = embedding_matrix.shape[0]
         self.transformer = self.transformer_class(
@@ -68,47 +67,17 @@ class TransformerModelBase(nn.Module, ModelBase):
         return output
 
 
-# TODO: Do this with some kind of class decorator to register
-# and name of the model and pass in arguments rather than with
-# named subclasses (basically you named argument sets).
-class VanillaTransformerModel(TransformerModelBase):
-    name = "vanilla_transformer"
-    transformer_class = VanillaTransformer
-
-
-class UniversalTransformerModel(TransformerModelBase):
-    name = "universal_transformer"
-    transformer_class = UniversalTransformer
-
-
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(PositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
-        )
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
-        self.register_buffer("pe", pe)
-
-    def forward(self, x):
-        x = x + self.pe[: x.size(0), :]
-        return self.dropout(x)
-
-
 def get_model(config, embedding_matrix=None):
-    for sub in utils.get_subclasses(ModelBase):
-        if sub.name == config.model:
-            accepted_args = set(sub.__init__.__code__.co_varnames)
-            accepted_args.remove("self")
-            kwargs = {
-                k.replace("model.", ""): v for k, v in config.items() if "model." in k
-            }
-            if embedding_matrix is not None:
-                kwargs["embedding_matrix"] = embedding_matrix
-            return sub(**kwargs)
+    key = ("model", config.model)
+    if key in registry:
+        cls, kwargs = registry[key]
+        accepted_args = set(cls.__init__.__code__.co_varnames)
+        accepted_args.remove("self")
+        kwargs.update(
+            {k.replace("model.", ""): v for k, v in config.items() if "model." in k}
+        )
+        if embedding_matrix is not None:
+            kwargs["embedding_matrix"] = embedding_matrix
+        return cls(**kwargs)
+
+    raise KeyError("Model not found!")

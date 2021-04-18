@@ -198,7 +198,8 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
         tgt_key_padding_mask=None,
         memory_key_padding_mask=None,
     ):
-        r"""Pass the inputs (and mask) through the decoder layer.
+        """
+        Pass the inputs (and mask) through the decoder layer.
 
         Args:
             tgt: the sequence to the decoder layer (required).
@@ -210,8 +211,9 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
 
         Shape:
             see the docs in Transformer class.
+
         """
-        # TODO: Position embedding, Timing embedding, dynamic halting.
+
         def step_func(state, step):
             state = self.positional_embedding(state)
             state = self.temporal_embedding(state, step)

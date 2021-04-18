@@ -4,15 +4,12 @@ import re
 import torch
 from torch.utils.data import TensorDataset
 
-from universal_transformer import DATA_DIR_PATH, utils
+from universal_transformer import DATA_DIR_PATH
+from universal_transformer.class_registry import registry, register_class
 
 
-class DatasetBase:
-    name = None
-
-
-class BabiDataset(DatasetBase):
-    name = "babi"
+@register_class(('dataset', 'babi'))
+class BabiDataset:
 
     def __init__(self, tokenizer, debug=False):
         self.debug = debug
@@ -74,14 +71,17 @@ def texts_to_tensors(texts, tokenizer):
 
 
 def get_dataset(config, tokenizer=None):
-    for sub in utils.get_subclasses(DatasetBase):
-        if sub.name == config.dataset:
-            accepted_args = set(sub.__init__.__code__.co_varnames)
-            accepted_args.remove("self")
-            kwargs = {
-                k.replace("dataset.", ""): v
-                for k, v in config.items()
-                if "dataset." in k
-            }
-            kwargs["tokenizer"] = tokenizer
-            return sub(**kwargs)
+    key = ("dataset", config.dataset)
+    if key in registry:
+        cls, kwargs = registry[key]
+        accepted_args = set(cls.__init__.__code__.co_varnames)
+        accepted_args.remove("self")
+        kwargs.update({
+            k.replace("dataset.", ""): v
+            for k, v in config.items()
+            if "dataset." in k
+        })
+        kwargs["tokenizer"] = tokenizer
+        return cls(**kwargs)
+
+    raise KeyError("Dataset not found!")
