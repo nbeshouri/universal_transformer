@@ -16,12 +16,22 @@ class VanillaTransformer(nn.Transformer):
 
 
 class UniversalTransformer(nn.Transformer):
-    def __init__(self, d_model=512, nhead=8, dropout=0.1, max_steps=2):
+    def __init__(
+        self, d_model=512, nhead=8, dropout=0.1, max_steps=2, halting_threshold=None
+    ):
         encoder = UniversalTransformerEncoder(
-            d_model=d_model, nhead=nhead, dropout=dropout, max_steps=max_steps
+            d_model=d_model,
+            nhead=nhead,
+            dropout=dropout,
+            max_steps=max_steps,
+            halting_threshold=halting_threshold,
         )
         decoder = UniversalTransformerDecoder(
-            d_model=d_model, nhead=nhead, dropout=dropout, max_steps=max_steps
+            d_model=d_model,
+            nhead=nhead,
+            dropout=dropout,
+            max_steps=max_steps,
+            halting_threshold=halting_threshold,
         )
         super().__init__(
             d_model=d_model,
@@ -33,12 +43,16 @@ class UniversalTransformer(nn.Transformer):
 
 
 class UniversalTransformerEncoder(nn.Module):
-    def __init__(self, d_model, nhead, dropout=0.1, max_steps=2, halting_threshold=1):
+    def __init__(
+        self, d_model, nhead, dropout=0.1, max_steps=2, halting_threshold=None
+    ):
         super().__init__()
         self.max_steps = max_steps
         self.halting_threshold = halting_threshold
         if self.halting_threshold is not None:
-            self.halting_prob_predictor = nn.Sequential(nn.Linear(d_model, 1), nn.Sigmoid())
+            self.halting_prob_predictor = nn.Sequential(
+                nn.Linear(d_model, 1), nn.Sigmoid()
+            )
         self.positional_embedding = PositionalEncoding(d_model=d_model, dropout=0)
         self.temporal_embedding = TemporalEncoding(
             d_model=d_model, dropout=0, max_len=max_steps
@@ -81,12 +95,14 @@ class UniversalTransformerEncoder(nn.Module):
             src = self.norm2(src)
             return src
 
-        if self.halting_threshold is None:
-            src = self._run_fixed_loop(src, step_func)
-        else:
-            src = self._run_dynamic_halting_loop(src, step_func)
+        return self._run_steps(src, step_func)
 
-        return src
+    def _run_steps(self, state, step_func):
+        if self.halting_threshold is None:
+            state = self._run_fixed_loop(state, step_func)
+        else:
+            state = self._run_dynamic_halting_loop(state, step_func)
+        return state
 
     def _run_fixed_loop(self, state, step_func):
         for step in range(self.max_steps):
@@ -94,34 +110,78 @@ class UniversalTransformerEncoder(nn.Module):
         return state
 
     def _run_dynamic_halting_loop(self, state, step_func):
+        # Note: To make it easier to compare, I've kept the structure
+        # variable and variable names from page 14 of the paper.
+        # I'm also not really doing anything with n_updates, but
+        # presumably might use them for analysis in the feature.
+
         device = state.device
+        # halting_probability is a per-position value that determines
+        # if a position will halt. Once a position has halted,
+        # it's halting probability is set to 1.
         halting_probability = torch.zeros(state.size(0), state.size(1)).to(device)
+        # n_updates tracks the number of times that a position was updated
+        # (a position that halts in the first iteration have a value
+        # of 1 because it still be updated during the iteration it halted).
         n_updates = torch.zeros(state.size(0), state.size(1)).to(device)
+        # remainders will contain the amount need top each positions
+        # halting probability so that it equals 1 during the iteration
+        # when it halted.
         remainders = torch.zeros(state.size(0), state.size(1)).to(device)
-        previous_state = torch.zeros_like(state).to(device)
+        # new_state is a weighted combination of the state values at
+        # each iteration and is the the final state returned after
+        # all positions have halted. The weight is either p or, on
+        # a positions final iteration, the remainder. (Intuitively,
+        # early small p iterations would have a relatively small effect
+        # on the final output).
+        new_state = torch.zeros_like(state).to(device)
 
         step = 0
-        while ((halting_probability < self.halting_threshold) & (n_updates < self.max_steps)).any():
+        while (
+            (halting_probability < self.halting_threshold)
+            & (n_updates < self.max_steps)
+        ).any():
+            # p is the the amount that's going to be added to each
+            # position's halting probability during this step.
             p = self.halting_prob_predictor(state).squeeze(-1)
+            # still_running is a mask where 1 indicates that the position
+            # is still running.
             still_running = (halting_probability < 1).float()
+            # new_halted is a mask where 1 indicates that a position
+            # has now halted and will stop updating after this loop
+            # (though it will be updated in this loop below).
             new_halted = (halting_probability + p * still_running > self.halting_threshold).float() * still_running
+            # Update still_running to drop out those that have halted.
             still_running = (halting_probability + p * still_running <= self.halting_threshold).float() * still_running
+            # Add the extra halting probability p to the cumulative
+            # halting_probability for positions that is still running.
             halting_probability += p * still_running
+            # Add the amount need to top up each newly halted position.
             remainders += new_halted * (1 - halting_probability)
+            # Top up newly halted positions to 1.
             halting_probability += new_halted * remainders
+            # Update per-position update counts.
             n_updates += still_running + new_halted
+            # Compute weights that control how much this iteration
+            # will affect the final output for each position.
             update_weights = ((p * still_running) + (new_halted * remainders)).unsqueeze(-1)
-
+            # Run the step function and update new_state.
             state = step_func(state, step)
-            previous_state = ((state * update_weights) + (previous_state * (1 - update_weights)))
+            new_state = ((state * update_weights) + (new_state * (1 - update_weights)))
             step += 1
 
-        return previous_state
+        return new_state
 
 
 class UniversalTransformerDecoder(UniversalTransformerEncoder):
     def __init__(self, d_model, nhead, dropout=0.1, max_steps=2, halting_threshold=1):
-        super().__init__(d_model=d_model, nhead=nhead, dropout=dropout, max_steps=max_steps, halting_threshold=halting_threshold)
+        super().__init__(
+            d_model=d_model,
+            nhead=nhead,
+            dropout=dropout,
+            max_steps=max_steps,
+            halting_threshold=halting_threshold,
+        )
         self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
         self.dropout3 = nn.Dropout(dropout)
         self.norm3 = nn.LayerNorm(d_model)
