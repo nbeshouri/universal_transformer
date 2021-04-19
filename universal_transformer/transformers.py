@@ -9,6 +9,11 @@ class VanillaTransformer(nn.Transformer):
     A simple wrapper around `nn.Transformer` that applies positional
     encodings to the input.
 
+    This could be done externally for `nn.Transformer`, but the UT must
+    apply its embeddings internally because it applies them multiple
+    times, so having a version of `nn.Transformer` that does the same
+    makes it easier to swap one for the other in the training code.
+
     """
 
     def __init__(self, d_model, *args, max_length=5000, **kwargs):
