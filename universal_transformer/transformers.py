@@ -5,9 +5,17 @@ import torch.nn as nn
 
 
 class VanillaTransformer(nn.Transformer):
-    def __init__(self, d_model, *args, **kwargs):
+    """
+    A simple wrapper around `nn.Transformer` that applies positional
+    encodings to the input.
+
+    """
+
+    def __init__(self, d_model, *args, max_length=5000, **kwargs):
         super().__init__(d_model=d_model, *args, **kwargs)
-        self.positional_embedding = PositionalEncoding(d_model=d_model, dropout=0)
+        self.positional_embedding = PositionalEncoding(
+            d_model=d_model, dropout=0.1, max_length=max_length
+        )
 
     def forward(self, src, tgt, *args, **kwargs):
         src = self.positional_embedding(src)
@@ -16,21 +24,48 @@ class VanillaTransformer(nn.Transformer):
 
 
 class UniversalTransformer(nn.Transformer):
+    """
+    A PyTorch implementation of the Universal transformer model.
+
+    Args:
+        d_model: The number of expected features in the encoder/decoder inputs.
+        nhead: The number of heads in the multi-head attention models.
+        dropout: the dropout value.
+        max_length: The maximum input length (used for positional
+            embeddings).
+        max_steps: Maximum number of "time" steps to take (i.e. how many
+            times to apply the transition to function to each position
+            of the input). If no value is set for `halting_threshold`,
+            all positions will be evaluated `max_steps` times.
+        halting_threshold: Threshold for dynamic halting. If `None`,
+            all positions will be evaluated for all timestamps.
+        transition_hidden_size: The hidden size for the transition
+            model.
+        transition_dropout: Dropout value between layers of the
+            transition model.
+        transition_type: The type of transition to use, either
+            "fully_connected" (the default), or "depth_wise_conv".
+
+
+    """
+
     def __init__(
         self,
         d_model=512,
         nhead=8,
         dropout=0.1,
+        max_length=5000,
         max_steps=3,
         halting_threshold=None,
         transition_hidden_size=None,
-        transition_dropout=0.1,
+        transition_dropout=0.2,
         transition_type="fully_connected",
     ):
         encoder = UniversalTransformerEncoder(
             d_model=d_model,
             nhead=nhead,
             dropout=dropout,
+            max_length=max_length,
             max_steps=max_steps,
             halting_threshold=halting_threshold,
             transition_hidden_size=transition_hidden_size,
@@ -41,6 +76,7 @@ class UniversalTransformer(nn.Transformer):
             d_model=d_model,
             nhead=nhead,
             dropout=dropout,
+            max_length=max_length,
             max_steps=max_steps,
             halting_threshold=halting_threshold,
             transition_hidden_size=transition_hidden_size,
@@ -62,6 +98,7 @@ class UniversalTransformerEncoder(nn.Module):
         d_model,
         nhead,
         dropout=0.1,
+        max_length=5000,
         max_steps=2,
         halting_threshold=None,
         transition_hidden_size=None,
@@ -76,9 +113,11 @@ class UniversalTransformerEncoder(nn.Module):
             self.halting_prob_predictor = nn.Sequential(
                 nn.Linear(d_model, 1), nn.Sigmoid()
             )
-        self.positional_embedding = PositionalEncoding(d_model=d_model, dropout=0)
+        self.positional_embedding = PositionalEncoding(
+            d_model=d_model, dropout=0.1, max_length=max_length
+        )
         self.temporal_embedding = TemporalEncoding(
-            d_model=d_model, dropout=0, max_len=max_steps
+            d_model=d_model, dropout=0.1, max_length=max_steps
         )
         self.self_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
         self.dropout_1 = nn.Dropout(dropout)
@@ -92,7 +131,7 @@ class UniversalTransformerEncoder(nn.Module):
         if transition_hidden_size is None:
             transition_hidden_size = d_model
         if transition_type == "fully_connected":
-            self.transition = FeedforwardTransitionFunction(
+            self.transition = FullyConnectedTransitionFunction(
                 input_side=d_model,
                 hidden_size=transition_hidden_size,
                 dropout=transition_dropout,
@@ -133,7 +172,7 @@ class UniversalTransformerEncoder(nn.Module):
             state = state + self.dropout_1(state)
 
             state = self.norm_1(state)
-            state = self.transition(state, 1 - src_key_padding_mask)
+            state = self.transition(state, ~src_key_padding_mask)
             state = state + self.dropout_2(state)
 
             state = self.norm_2(state)
@@ -229,16 +268,18 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
         d_model,
         nhead,
         dropout=0.1,
+        max_length=5000,
         max_steps=2,
         halting_threshold=None,
         transition_hidden_size=None,
-        transition_dropout=0.0,
+        transition_dropout=0.2,
         transition_type="fully_connected",
     ):
         super().__init__(
             d_model=d_model,
             nhead=nhead,
             dropout=dropout,
+            max_length=max_length,
             max_steps=max_steps,
             halting_threshold=halting_threshold,
             transition_hidden_size=transition_hidden_size,
@@ -298,7 +339,7 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
             state = state + self.dropout_2(state_2)
 
             state = self.norm_2(state)
-            state_2 = self.transition(state, 1 - tgt_key_padding_mask)
+            state_2 = self.transition(state, ~tgt_key_padding_mask)
             state = state + self.dropout_3(state_2)
 
             state = self.norm_3(state)
@@ -307,30 +348,54 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
         return self._run_steps(tgt, step_func)
 
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, dropout=0.1, max_len=5000):
-        super(PositionalEncoding, self).__init__()
-        self.dropout = nn.Dropout(p=dropout)
-
-        pe = torch.zeros(max_len, d_model)
-        position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(
-            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
+class FullyConnectedTransitionFunction(nn.Module):
+    def __init__(self, input_side, hidden_size, dropout):
+        super().__init__()
+        self.transition = nn.Sequential(
+            nn.Linear(input_side, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, input_side),
         )
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(0).transpose(0, 1)
-        self.register_buffer("pe", pe)
 
-    def forward(self, x):
-        x = x + self.pe[: x.size(0), :]
-        return self.dropout(x)
+    def forward(self, state, padding_mask):
+        return self.transition(state)
 
 
-class TemporalEncoding(PositionalEncoding):
-    def forward(self, x, cur_step):
-        x = x + self.pe[cur_step, :]
-        return self.dropout(x)
+class DepthwiseTransitionFunction(nn.Module):
+    def __init__(self, in_channels, hidden_size, dropout=0.0, padding_type="left"):
+        super().__init__()
+        self.conv_1 = Conv1dDepthwise(
+            in_channels=in_channels,
+            out_channels=hidden_size,
+            kernel_size=3,
+            padding_type=padding_type,
+        )
+        self.dropout = nn.Dropout(dropout)
+        self.conv_2 = Conv1dDepthwise(
+            in_channels=in_channels,
+            out_channels=hidden_size,
+            kernel_size=5,
+            padding_type=padding_type,
+        )
+
+    def forward(self, state, padding_mask):
+        # Convert from (sequence_length, batch_size, embedding_size) to
+        # (batch_size, embedding_size, sequence_length).
+        orig_shape = state.shape
+        state = state.permute(1, 2, 0)
+        # Padding mask is (batch_size, sequence_length) so need to
+        # convert to (batch_size, 1, sequence_length).
+        padding_mask = padding_mask.unsqueeze(1)
+
+        state = self.conv_1(state * padding_mask)
+        state = nn.functional.relu(state)
+        state = self.dropout(state)
+        state = self.conv_2(state * padding_mask)
+
+        state = state.permute(2, 0, 1)
+        assert state.shape == orig_shape
+        return state
 
 
 class Conv1dDepthwise(nn.Module):
@@ -395,51 +460,27 @@ class Conv1dDepthwise(nn.Module):
         return x
 
 
-class DepthwiseTransitionFunction(nn.Module):
-    def __init__(self, in_channels, hidden_size, dropout=0, padding_type="left"):
-        super().__init__()
-        self.conv_1 = Conv1dDepthwise(
-            in_channels=in_channels,
-            out_channels=hidden_size,
-            kernel_size=3,
-            padding_type=padding_type,
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, dropout=0.1, max_length=5000):
+        super(PositionalEncoding, self).__init__()
+        self.dropout = nn.Dropout(p=dropout)
+
+        pe = torch.zeros(max_length, d_model)
+        position = torch.arange(0, max_length, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(
+            torch.arange(0, d_model, 2).float() * (-math.log(10000.0) / d_model)
         )
-        self.dropout = nn.Dropout(dropout)
-        self.conv_2 = Conv1dDepthwise(
-            in_channels=in_channels,
-            out_channels=hidden_size,
-            kernel_size=5,
-            padding_type=padding_type,
-        )
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        pe = pe.unsqueeze(0).transpose(0, 1)
+        self.register_buffer("pe", pe)
 
-    def forward(self, state, padding_mask):
-        # Convert from (sequence_length, batch_size, embedding_size) to
-        # (batch_size, embedding_size, sequence_length).
-        orig_shape = state.shape
-        state = state.permute(1, 2, 0)
-        # Padding mask is (batch_size, sequence_length) so need to
-        # convert to (batch_size, 1, sequence_length).
-        padding_mask = padding_mask.unsqueeze(1)
-
-        state = self.conv_1(state * padding_mask)
-        state = nn.functional.relu(state)
-        state = self.dropout(state)
-        state = self.conv_2(state * padding_mask)
-
-        state = state.permute(2, 0, 1)
-        assert state.shape == orig_shape
-        return state
+    def forward(self, x):
+        x = x + self.pe[: x.size(0), :]
+        return self.dropout(x)
 
 
-class FeedforwardTransitionFunction(nn.Module):
-    def __init__(self, input_side, hidden_size, dropout):
-        super().__init__()
-        self.transition = nn.Sequential(
-            nn.Linear(input_side, hidden_size),
-            nn.ReLU(),
-            nn.Dropout(dropout),
-            nn.Linear(hidden_size, input_side),
-        )
-
-    def forward(self, state, padding_mask):
-        return self.transition(state)
+class TemporalEncoding(PositionalEncoding):
+    def forward(self, x, cur_step):
+        x = x + self.pe[cur_step, :]
+        return self.dropout(x)

@@ -64,7 +64,7 @@ def texts_to_tensors(texts, tokenizer):
     att_masks = [[1] * length + [0] * (seq_length_max - length) for length in lengths]
 
     token_ids_seqs = torch.tensor(token_ids_seqs, dtype=torch.long)
-    att_masks = torch.tensor(att_masks, dtype=torch.uint8)
+    att_masks = torch.tensor(att_masks, dtype=torch.bool)
 
     return token_ids_seqs, att_masks
 
