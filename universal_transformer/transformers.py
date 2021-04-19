@@ -17,7 +17,15 @@ class VanillaTransformer(nn.Transformer):
 
 class UniversalTransformer(nn.Transformer):
     def __init__(
-        self, d_model=512, nhead=8, dropout=0.1, max_steps=2, halting_threshold=None
+        self,
+        d_model=512,
+        nhead=8,
+        dropout=0.1,
+        max_steps=3,
+        halting_threshold=None,
+        transition_hidden_size=None,
+        transition_dropout=0.1,
+        transition_type="fully_connected",
     ):
         encoder = UniversalTransformerEncoder(
             d_model=d_model,
@@ -25,6 +33,9 @@ class UniversalTransformer(nn.Transformer):
             dropout=dropout,
             max_steps=max_steps,
             halting_threshold=halting_threshold,
+            transition_hidden_size=transition_hidden_size,
+            transition_dropout=transition_dropout,
+            transition_type=transition_type,
         )
         decoder = UniversalTransformerDecoder(
             d_model=d_model,
@@ -32,6 +43,9 @@ class UniversalTransformer(nn.Transformer):
             dropout=dropout,
             max_steps=max_steps,
             halting_threshold=halting_threshold,
+            transition_hidden_size=transition_hidden_size,
+            transition_dropout=transition_dropout,
+            transition_type=transition_type,
         )
         super().__init__(
             d_model=d_model,
@@ -44,7 +58,16 @@ class UniversalTransformer(nn.Transformer):
 
 class UniversalTransformerEncoder(nn.Module):
     def __init__(
-        self, d_model, nhead, dropout=0.1, max_steps=2, halting_threshold=None
+        self,
+        d_model,
+        nhead,
+        dropout=0.1,
+        max_steps=2,
+        halting_threshold=None,
+        transition_hidden_size=None,
+        transition_dropout=0.2,
+        transition_type="fully_connected",
+        transition_padding_type="same",
     ):
         super().__init__()
         self.max_steps = max_steps
@@ -65,6 +88,24 @@ class UniversalTransformerEncoder(nn.Module):
         )
         self.dropout_2 = nn.Dropout(dropout)
         self.norm_2 = nn.LayerNorm(d_model)
+
+        if transition_hidden_size is None:
+            transition_hidden_size = d_model
+        if transition_type == "fully_connected":
+            self.transition = FeedforwardTransitionFunction(
+                input_side=d_model,
+                hidden_size=transition_hidden_size,
+                dropout=transition_dropout,
+            )
+        elif transition_type == "depth_wise_conv":
+            self.transition = DepthwiseTransitionFunction(
+                in_channels=d_model,
+                hidden_size=transition_hidden_size,
+                dropout=transition_dropout,
+                padding_type=transition_padding_type,
+            )
+        else:
+            raise ValueError("Unknown transition type!")
 
     def forward(self, src, mask=None, src_key_padding_mask=None):
         r"""Pass the input through the encoder layer.
@@ -92,7 +133,7 @@ class UniversalTransformerEncoder(nn.Module):
             state = state + self.dropout_1(state)
 
             state = self.norm_1(state)
-            state = self.transition(state)
+            state = self.transition(state, 1 - src_key_padding_mask)
             state = state + self.dropout_2(state)
 
             state = self.norm_2(state)
@@ -153,9 +194,13 @@ class UniversalTransformerEncoder(nn.Module):
             # new_halted is a mask where 1 indicates that a position
             # has now halted and will stop updating after this loop
             # (though it will be updated in this loop below).
-            new_halted = (halting_probability + p * still_running > self.halting_threshold).float() * still_running
+            new_halted = (
+                halting_probability + p * still_running > self.halting_threshold
+            ).float() * still_running
             # Update still_running to drop out those that have halted.
-            still_running = (halting_probability + p * still_running <= self.halting_threshold).float() * still_running
+            still_running = (
+                halting_probability + p * still_running <= self.halting_threshold
+            ).float() * still_running
             # Add the extra halting probability p to the cumulative
             # halting_probability for positions that is still running.
             halting_probability += p * still_running
@@ -167,7 +212,9 @@ class UniversalTransformerEncoder(nn.Module):
             n_updates += still_running + new_halted
             # Compute weights that control how much this iteration
             # will affect the final output for each position.
-            update_weights = ((p * still_running) + (new_halted * remainders)).unsqueeze(-1)
+            update_weights = (
+                (p * still_running) + (new_halted * remainders)
+            ).unsqueeze(-1)
             # Run the step function and update new_state.
             state = step_func(state, step)
             new_state = (state * update_weights) + (new_state * (1 - update_weights))
@@ -177,13 +224,27 @@ class UniversalTransformerEncoder(nn.Module):
 
 
 class UniversalTransformerDecoder(UniversalTransformerEncoder):
-    def __init__(self, d_model, nhead, dropout=0.1, max_steps=2, halting_threshold=1):
+    def __init__(
+        self,
+        d_model,
+        nhead,
+        dropout=0.1,
+        max_steps=2,
+        halting_threshold=None,
+        transition_hidden_size=None,
+        transition_dropout=0.0,
+        transition_type="fully_connected",
+    ):
         super().__init__(
             d_model=d_model,
             nhead=nhead,
             dropout=dropout,
             max_steps=max_steps,
             halting_threshold=halting_threshold,
+            transition_hidden_size=transition_hidden_size,
+            transition_dropout=transition_dropout,
+            transition_type=transition_type,
+            transition_padding_type="left",  # Because same would see the future.
         )
         self.multihead_attn = nn.MultiheadAttention(d_model, nhead, dropout=dropout)
         self.dropout_3 = nn.Dropout(dropout)
@@ -237,7 +298,7 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
             state = state + self.dropout_2(state_2)
 
             state = self.norm_2(state)
-            state_2 = self.transition(state)
+            state_2 = self.transition(state, 1 - tgt_key_padding_mask)
             state = state + self.dropout_3(state_2)
 
             state = self.norm_3(state)
@@ -270,3 +331,115 @@ class TemporalEncoding(PositionalEncoding):
     def forward(self, x, cur_step):
         x = x + self.pe[cur_step, :]
         return self.dropout(x)
+
+
+class Conv1dDepthwise(nn.Module):
+    """
+    A depthwise 1D convolution layer.
+
+    The basic idea here is to slice the input up along its depth and
+    apply a separate 1 channel/filter convolution to each those slices.
+    Then you do `out_channel` linear combinations of the results
+    at each position to get the final output.
+
+    Args:
+        in_channels: The number of input channels. For text, this would
+            be the embedding size.
+        out_channels: The number of output channels.
+        kernel_size: The size of the 1D kernel. Right now, this must
+            be odd (simplifies the math for keeping the name number of
+            positions, which is what we want for the UT at least).
+
+    Note:
+        This implementation was adapted from:
+        https://discuss.pytorch.org/t/how-to-modify-a-conv2d-to-depthwise-separable-convolution/15843/4
+
+    """
+
+    def __init__(self, in_channels, out_channels, kernel_size=3, padding_type="same"):
+        super().__init__()
+        if not kernel_size % 2:
+            raise ValueError("Only supporting odd kernels at the moment!")
+        if padding_type == "left":
+            padding = (kernel_size - 1, 0)
+        elif padding_type == "same":
+            padding = kernel_size // 2
+        else:
+            raise ValueError("Unsupported padding!")
+        self.pad = nn.ConstantPad1d(padding, 0)
+        self.depthwise = nn.Conv1d(
+            in_channels,
+            in_channels,
+            kernel_size=kernel_size,
+            padding=0,
+            groups=in_channels,
+        )
+        self.pointwise = nn.Conv1d(in_channels, out_channels, kernel_size=1)
+
+    def forward(self, x):
+        """
+        Does a 1D depth wise convolution.
+
+        Args:
+            x: A tensor with shape (batch_size, embedding_size,
+                sequence_length).
+
+        Returns:
+            A tensor with shape (batch_size, out_channels,
+                sequence_length)
+
+        """
+        x = self.pad(x)
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return x
+
+
+class DepthwiseTransitionFunction(nn.Module):
+    def __init__(self, in_channels, hidden_size, dropout=0, padding_type="left"):
+        super().__init__()
+        self.conv_1 = Conv1dDepthwise(
+            in_channels=in_channels,
+            out_channels=hidden_size,
+            kernel_size=3,
+            padding_type=padding_type,
+        )
+        self.dropout = nn.Dropout(dropout)
+        self.conv_2 = Conv1dDepthwise(
+            in_channels=in_channels,
+            out_channels=hidden_size,
+            kernel_size=5,
+            padding_type=padding_type,
+        )
+
+    def forward(self, state, padding_mask):
+        # Convert from (sequence_length, batch_size, embedding_size) to
+        # (batch_size, embedding_size, sequence_length).
+        orig_shape = state.shape
+        state = state.permute(1, 2, 0)
+        # Padding mask is (batch_size, sequence_length) so need to
+        # convert to (batch_size, 1, sequence_length).
+        padding_mask = padding_mask.unsqueeze(1)
+
+        state = self.conv_1(state * padding_mask)
+        state = nn.functional.relu(state)
+        state = self.dropout(state)
+        state = self.conv_2(state * padding_mask)
+
+        state = state.permute(2, 0, 1)
+        assert state.shape == orig_shape
+        return state
+
+
+class FeedforwardTransitionFunction(nn.Module):
+    def __init__(self, input_side, hidden_size, dropout):
+        super().__init__()
+        self.transition = nn.Sequential(
+            nn.Linear(input_side, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_size, input_side),
+        )
+
+    def forward(self, state, padding_mask):
+        return self.transition(state)

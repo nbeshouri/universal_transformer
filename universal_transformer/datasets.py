@@ -8,9 +8,8 @@ from universal_transformer import DATA_DIR_PATH
 from universal_transformer.class_registry import registry, register_class
 
 
-@register_class(('dataset', 'babi'))
+@register_class(("dataset", "babi"))
 class BabiDataset:
-
     def __init__(self, tokenizer, debug=False):
         self.debug = debug
         train_path = os.path.join(DATA_DIR_PATH, "babi", "en-valid", "qa1_train.txt")
@@ -76,11 +75,9 @@ def get_dataset(config, tokenizer=None):
         cls, kwargs = registry[key]
         accepted_args = set(cls.__init__.__code__.co_varnames)
         accepted_args.remove("self")
-        kwargs.update({
-            k.replace("dataset.", ""): v
-            for k, v in config.items()
-            if "dataset." in k
-        })
+        kwargs.update(
+            {k.replace("dataset.", ""): v for k, v in config.items() if "dataset." in k}
+        )
         kwargs["tokenizer"] = tokenizer
         return cls(**kwargs)
 

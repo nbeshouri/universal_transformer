@@ -14,7 +14,9 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
 
 @register_class(("model", "vanilla_transformer"), transformer_class=VanillaTransformer)
-@register_class(("model", "universal_transformer"), transformer_class=UniversalTransformer)
+@register_class(
+    ("model", "universal_transformer"), transformer_class=UniversalTransformer
+)
 class TransformerModelBase(nn.Module):
     transformer_class = None
 
