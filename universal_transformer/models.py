@@ -43,7 +43,7 @@ class TransformerModelBase(nn.Module):
         decoder_att_mask = self.transformer.generate_square_subsequent_mask(
             target_ids.size(0)
         )
-        decoder_att_mask.to(source_ids.device)
+        decoder_att_mask = decoder_att_mask.to(source_ids.device)
 
         output = self.transformer(
             src=source_ids,
