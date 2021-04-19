@@ -1,6 +1,3 @@
-import math
-import os
-
 import torch
 import torch.nn as nn
 
@@ -9,8 +6,6 @@ from universal_transformer.transformers import (
     UniversalTransformer,
     VanillaTransformer,
 )
-
-os.environ["KMP_DUPLICATE_LIB_OK"] = "True"
 
 
 @register_class(("model", "vanilla_transformer"), transformer_class=VanillaTransformer)
@@ -63,6 +58,7 @@ class TransformerModelBase(nn.Module):
             tgt_mask=decoder_att_mask,
             src_key_padding_mask=1 - source_padding_mask,  # It things 1 means ignore.
             tgt_key_padding_mask=1 - target_padding_mask,
+            memory_key_padding_mask=1 - source_padding_mask,
         )
         output = output.permute(1, 0, 2)
         output = self.output_linear(output)
