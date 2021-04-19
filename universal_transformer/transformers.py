@@ -113,8 +113,12 @@ class UniversalTransformerEncoder(nn.Module):
             self.halting_prob_predictor = nn.Sequential(
                 nn.Linear(d_model, 1), nn.Sigmoid()
             )
+        # Setting positional embedding dropout to 0 because will
+        # do it in the temporal embedding too and I want an
+        # overall 0.1 chance (what the original transformer paper
+        # used).
         self.positional_embedding = PositionalEncoding(
-            d_model=d_model, dropout=0.1, max_length=max_length
+            d_model=d_model, dropout=0.0, max_length=max_length
         )
         self.temporal_embedding = TemporalEncoding(
             d_model=d_model, dropout=0.1, max_length=max_steps
