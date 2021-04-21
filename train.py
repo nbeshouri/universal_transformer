@@ -5,6 +5,7 @@ from time import perf_counter
 
 import numpy as np
 import pandas as pd
+from sklearn import metrics
 import torch
 import wandb
 from torch import nn
@@ -19,7 +20,7 @@ TEMP_WEIGHTS_PATH = "state_dict.pickle"
 
 
 def run_model_on_dataset(
-    model, dataset, config, yield_freq=None, optimizer=None, scheduler=None
+    model, dataset, tokenizer, config, yield_freq=None, optimizer=None, scheduler=None
 ):
     dataloader = DataLoader(
         dataset, shuffle=True, batch_size=config.batch_size, pin_memory=True
@@ -30,20 +31,27 @@ def run_model_on_dataset(
     logits = []
     label_ids = []
     batches_since_yield = 0
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(
+        ignore_index=tokenizer.token_to_id[tokenizer.pad_token]
+    )
 
     for i, batch in enumerate(dataloader):
         device = torch.device(config.device)
         batch = tuple(t.to(device) for t in batch)
         input_ids, output_ids, input_ids_padding_mask, output_ids_padding_mask = batch
+        output_ids_inputs = output_ids[:, :-1]
+        output_ids_targets = output_ids[:, 1:]
         batch_logits = model(
             source_ids=input_ids,
-            target_ids=output_ids[:, :-1],
+            target_ids=output_ids_inputs,
             source_padding_mask=input_ids_padding_mask,
             target_padding_mask=output_ids_padding_mask[:, :-1],
         )
+        # Need to flatten the inputs to the criterion so that logits
+        # have shape (batch_size *sequences_length, vocab_size) and
+        # the targets have shape (batch_size * sequences_length).
         loss = criterion(
-            batch_logits.view(-1, batch_logits.size(-1)), output_ids[:, 1:].reshape(-1)
+            batch_logits.view(-1, batch_logits.size(-1)), output_ids_targets.reshape(-1)
         )
 
         total_loss += loss.item() * len(batch[0])  # Convert from mean to sum.
@@ -57,8 +65,8 @@ def run_model_on_dataset(
 
         batch_logits = batch_logits.detach().cpu().numpy()
         logits.append(batch_logits)
-        preds.extend(np.argmax(batch_logits, axis=1))
-        label_ids.extend(batch[2].detach().cpu().numpy())
+        preds.extend(np.argmax(batch_logits, axis=-1))
+        label_ids.extend(output_ids_targets.detach().cpu().numpy())
         batches_since_yield += 1
 
         if (
@@ -67,7 +75,9 @@ def run_model_on_dataset(
             and (i + 1) % yield_freq == 0
         ):
             logits = np.concatenate(logits, axis=0)
-            yield logits, preds, label_ids, total_loss / batches_since_yield
+            yield np.array(logits), np.array(preds), np.array(
+                label_ids
+            ), total_loss / batches_since_yield
             total_loss = 0
             preds = []
             logits = []
@@ -119,6 +129,7 @@ def train(config, run):
         for logits, preds, label_ids, loss in run_model_on_dataset(
             model,
             data.train,
+            tokenizer,
             config,
             yield_freq=config.get("log_freq"),
             optimizer=optimizer,
@@ -131,6 +142,7 @@ def train(config, run):
                 label_ids=label_ids,
                 loss=loss,
                 runtime=perf_counter() - mini_batch_start_time,
+                ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
             )
             log_step("train", train_metrics, step=step, epoch=epoch)
 
@@ -147,6 +159,7 @@ def train(config, run):
                     label_ids=label_ids,
                     loss=loss,
                     runtime=perf_counter() - start_time,
+                    ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
                 )
                 log_step("val", val_metrics, step=step, epoch=epoch)
                 log_summary("val")
@@ -190,14 +203,16 @@ def log_step(
 _step_metrics = defaultdict(lambda: [])
 
 
-def compute_metrics(
-    logits,
-    preds,
-    label_ids,
-    loss,
-    runtime,
-):
+def compute_metrics(logits, preds, label_ids, loss, runtime, ignore_index=None):
+    preds_flat = np.array(preds).flatten()
+    label_ids_flat = np.array(label_ids).flatten()
+    sample_weight = None
+    if ignore_index is not None:
+        sample_weight = label_ids_flat != ignore_index
     return {
+        "accuracy": metrics.accuracy_score(
+            label_ids_flat, preds_flat, sample_weight=sample_weight
+        ),
         "loss": loss,
         "examples_per_second": len(preds) / runtime,
         "sample_size": len(preds),
@@ -255,6 +270,7 @@ def train(config, run):
         for logits, preds, label_ids, loss in run_model_on_dataset(
             model,
             data.train,
+            tokenizer,
             config,
             yield_freq=config.get("log_freq"),
             optimizer=optimizer,
@@ -267,6 +283,7 @@ def train(config, run):
                 label_ids=label_ids,
                 loss=loss,
                 runtime=perf_counter() - mini_batch_start_time,
+                ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
             )
             log_step("train", train_metrics, step=step, epoch=epoch)
 
@@ -275,7 +292,11 @@ def train(config, run):
             with torch.no_grad():
                 start_time = perf_counter()
                 logits, preds, label_ids, loss = iter(
-                    next(run_model_on_dataset(model, data.val, config, yield_freq=None))
+                    next(
+                        run_model_on_dataset(
+                            model, data.val, tokenizer, config, yield_freq=None
+                        )
+                    )
                 )
                 val_metrics = compute_metrics(
                     logits=logits,
@@ -283,6 +304,7 @@ def train(config, run):
                     label_ids=label_ids,
                     loss=loss,
                     runtime=perf_counter() - start_time,
+                    ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
                 )
                 log_step("val", val_metrics, step=step, epoch=epoch)
                 log_summary("val")
