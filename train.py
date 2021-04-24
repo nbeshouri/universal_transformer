@@ -206,13 +206,14 @@ _step_metrics = defaultdict(lambda: [])
 def compute_metrics(logits, preds, label_ids, loss, runtime, ignore_index=None):
     preds_flat = np.array(preds).flatten()
     label_ids_flat = np.array(label_ids).flatten()
-    sample_weight = None
     if ignore_index is not None:
         sample_weight = label_ids_flat != ignore_index
     return {
-        "accuracy": metrics.accuracy_score(
-            label_ids_flat, preds_flat, sample_weight=sample_weight
-        ),
+        # Think bAbI wants all or nothing accuracy. Can ignore padding
+        # though because it's
+        "accuracy": ((preds == label_ids) | (label_ids == ignore_index))
+        .all(axis=1)
+        .mean(),
         "loss": loss,
         "examples_per_second": len(preds) / runtime,
         "sample_size": len(preds),

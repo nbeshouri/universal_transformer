@@ -1,5 +1,6 @@
 import os
 import re
+from itertools import chain
 
 import torch
 from torch.utils.data import TensorDataset
@@ -10,8 +11,9 @@ from universal_transformer.class_registry import registry, register_class
 
 @register_class(("dataset", "babi"))
 class BabiDataset:
-    def __init__(self, tokenizer, debug=False):
+    def __init__(self, tokenizer, group_story_sents=True, debug=False):
         self.debug = debug
+        self.group_story_sents = group_story_sents
         train_path = os.path.join(DATA_DIR_PATH, "babi", "en-valid", "qa1_train.txt")
         self.train = self.path_to_dataset(train_path, tokenizer, fit_tokenizer=True)
 
@@ -20,14 +22,50 @@ class BabiDataset:
 
     def path_to_dataset(self, path, tokenizer, fit_tokenizer=False):
         stories, answers = list(zip(*self.read_babi_lines(path)))
+        assert len(stories) == len(answers)
         if self.debug:
             stories = stories[:10]
             answers = answers[:10]
+        stories_flat = tuple(map(lambda x: " ".join(x), stories))
         if fit_tokenizer:
-            tokenizer.fit(stories + answers)
-        stories, story_attn_masks = texts_to_tensors(stories, tokenizer)
-        answers, answer_attn_masks = texts_to_tensors(answers, tokenizer)
-        return TensorDataset(stories, answers, story_attn_masks, answer_attn_masks)
+            tokenizer.fit(stories_flat + answers)
+
+        answers_ids, answers_attn_masks = texts_to_tensors(answers, tokenizer)
+        if self.group_story_sents:
+            stories_ids, stories_attn_masks = self.story_texts_to_tensors(
+                stories, tokenizer
+            )
+        else:
+            stories_ids, stories_attn_masks = texts_to_tensors(stories_flat, tokenizer)
+
+        return TensorDataset(
+            stories_ids, answers_ids, stories_attn_masks, answers_attn_masks
+        )
+
+    @staticmethod
+    def story_texts_to_tensors(stories, tokenizer):
+        max_story_length = max(list(map(len, stories)))
+        max_sent_length = float("-inf")
+
+        stories_ids = []
+        for story in stories:
+            story_ids = []
+            for sent in story:
+                sent_ids = tokenizer.encode(sent)
+                max_sent_length = max(len(sent_ids), max_sent_length)
+                story_ids.append(sent_ids)
+            stories_ids.append(story_ids)
+
+        for story_ids in stories_ids:
+            for sent_ids in story_ids:
+                for _ in range(max_sent_length - len(sent_ids)):
+                    sent_ids.append(0)
+            for _ in range(max_story_length - len(story_ids)):
+                story_ids.append([0] * max_sent_length)
+
+        stories_ids = torch.tensor(stories_ids)
+        stories_attn_masks = (stories_ids != 0).any(axis=-1)
+        return stories_ids, stories_attn_masks
 
     @classmethod
     def read_babi_lines(cls, path):
@@ -40,8 +78,7 @@ class BabiDataset:
                     story_lines = []
                 if "?" in line:
                     question, answer = re.split(r"(?<=\?)\s*", line)
-                    story = " ".join(story_lines + [question])
-                    yield story, answer
+                    yield story_lines + [question], answer
                 else:
                     story_lines.append(line)
 
