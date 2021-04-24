@@ -1,6 +1,6 @@
 import os
 import re
-from itertools import chain
+from glob import glob
 
 import torch
 from torch.utils.data import TensorDataset
@@ -11,21 +11,51 @@ from universal_transformer.class_registry import registry, register_class
 
 @register_class(("dataset", "babi"))
 class BabiDataset:
-    def __init__(self, tokenizer, group_story_sents=True, debug=False):
+    def __init__(self, tokenizer, task="*", group_story_sents=True, debug=False):
         self.debug = debug
         self.group_story_sents = group_story_sents
-        train_path = os.path.join(DATA_DIR_PATH, "babi", "en-valid", "qa1_train.txt")
+
+        prefix = "qa*t" if task == "all" else f"qa{task}"
+
+        train_path = os.path.join(
+            DATA_DIR_PATH, "babi", "en-valid", f"{prefix}_train.txt"
+        )
         self.train = self.path_to_dataset(train_path, tokenizer, fit_tokenizer=True)
 
-        val_path = os.path.join(DATA_DIR_PATH, "babi", "en-valid", "qa1_valid.txt")
+        val_path = os.path.join(
+            DATA_DIR_PATH, "babi", "en-valid", f"{prefix}_valid.txt"
+        )
         self.val = self.path_to_dataset(val_path, tokenizer)
 
+        test_path = os.path.join(
+            DATA_DIR_PATH, "babi", "en-valid", f"{prefix}_test.txt"
+        )
+        self.test = self.path_to_dataset(test_path, tokenizer)
+
     def path_to_dataset(self, path, tokenizer, fit_tokenizer=False):
-        stories, answers = list(zip(*self.read_babi_lines(path)))
+        tensors = []
+        for path in glob(path):
+            tensors.append(self.path_to_tensors(path, tokenizer, fit_tokenizer))
+        tensors_joined = []
+        for tensor_set in list(zip(*tensors)):
+            tensors_joined.append(torch.cat(tensor_set, dim=0))
+        return TensorDataset(*tensors_joined)
+
+    def path_to_dataset(self, path, tokenizer, fit_tokenizer=False):
+        examples = []
+        for path in glob(path):
+            examples.extend(self.read_babi_lines(path))
+        stories, answers, task_ids = zip(*examples)
+        tensors = self.stories_to_tensors(
+            stories, answers, task_ids, tokenizer, fit_tokenizer
+        )
+        return TensorDataset(*tensors)
+
+    def stories_to_tensors(
+        self, stories, answers, task_ids, tokenizer, fit_tokenizer=False
+    ):
         assert len(stories) == len(answers)
-        if self.debug:
-            stories = stories[:10]
-            answers = answers[:10]
+
         stories_flat = tuple(map(lambda x: " ".join(x), stories))
         if fit_tokenizer:
             tokenizer.fit(stories_flat + answers)
@@ -38,8 +68,13 @@ class BabiDataset:
         else:
             stories_ids, stories_attn_masks = texts_to_tensors(stories_flat, tokenizer)
 
-        return TensorDataset(
-            stories_ids, answers_ids, stories_attn_masks, answers_attn_masks
+        task_numbers = torch.tensor(task_ids)
+        return (
+            stories_ids,
+            answers_ids,
+            stories_attn_masks,
+            answers_attn_masks,
+            task_numbers,
         )
 
     @staticmethod
@@ -67,18 +102,22 @@ class BabiDataset:
         stories_attn_masks = (stories_ids != 0).any(axis=-1)
         return stories_ids, stories_attn_masks
 
-    @classmethod
-    def read_babi_lines(cls, path):
+    def read_babi_lines(self, path):
+        task_id = int(re.search(r"\d+", os.path.basename(path)).group(0))
         story_lines = []
+        stories_read = 0
         with open(path) as f:
             for line in f:
+                if self.debug and stories_read >= 10:
+                    break
                 line_num = int(line.split(" ")[0])
-                line = cls.clean_line(line)
+                line = self.clean_line(line)
                 if line_num == 1 and story_lines:
                     story_lines = []
                 if "?" in line:
                     question, answer = re.split(r"(?<=\?)\s*", line)
-                    yield story_lines + [question], answer
+                    stories_read += 1
+                    yield story_lines + [question], answer, task_id
                 else:
                     story_lines.append(line)
 
