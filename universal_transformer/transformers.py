@@ -203,7 +203,7 @@ class UniversalTransformerEncoder(nn.Module):
 
     def _run_dynamic_halting_loop(self, state, step_func):
         # Note: To make it easier to compare, I've kept the structure
-        # variable and variable names from page 14 of the paper.
+        # and variable names from page 14 of the paper.
         # I'm also not really doing anything with n_updates, but
         # presumably might use them for analysis in the feature.
 

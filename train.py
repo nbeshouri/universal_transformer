@@ -5,7 +5,6 @@ from time import perf_counter
 
 import numpy as np
 import pandas as pd
-from sklearn import metrics
 import torch
 import wandb
 from torch import nn
@@ -30,6 +29,7 @@ def run_model_on_dataset(
     preds = []
     logits = []
     label_ids = []
+    task_ids = []
     batches_since_yield = 0
     criterion = nn.CrossEntropyLoss(
         ignore_index=tokenizer.token_to_id[tokenizer.pad_token]
@@ -39,19 +39,19 @@ def run_model_on_dataset(
         device = torch.device(config.device)
         batch = tuple(t.to(device) for t in batch)
         (
-            input_ids,
-            output_ids,
-            input_ids_padding_mask,
-            output_ids_padding_mask,
-            task_ids,
+            batch_input_ids,
+            batch_output_ids,
+            batch_input_ids_padding_mask,
+            batch_output_ids_padding_mask,
+            batch_task_ids,
         ) = batch
-        output_ids_inputs = output_ids[:, :-1]
-        output_ids_targets = output_ids[:, 1:]
+        output_ids_inputs = batch_output_ids[:, :-1]
+        output_ids_targets = batch_output_ids[:, 1:]
         batch_logits = model(
-            source_ids=input_ids,
+            source_ids=batch_input_ids,
             target_ids=output_ids_inputs,
-            source_padding_mask=input_ids_padding_mask,
-            target_padding_mask=output_ids_padding_mask[:, :-1],
+            source_padding_mask=batch_input_ids_padding_mask,
+            target_padding_mask=batch_output_ids_padding_mask[:, :-1],
         )
         # Need to flatten the inputs to the criterion so that logits
         # have shape (batch_size *sequences_length, vocab_size) and
@@ -73,6 +73,7 @@ def run_model_on_dataset(
         logits.append(batch_logits)
         preds.extend(np.argmax(batch_logits, axis=-1))
         label_ids.extend(output_ids_targets.detach().cpu().numpy())
+        task_ids.extend(batch_task_ids.detach().cpu().numpy())
         batches_since_yield += 1
 
         if (
@@ -83,11 +84,12 @@ def run_model_on_dataset(
             logits = np.concatenate(logits, axis=0)
             yield np.array(logits), np.array(preds), np.array(
                 label_ids
-            ), total_loss / batches_since_yield
+            ), np.array(task_ids), total_loss / batches_since_yield
             total_loss = 0
             preds = []
             logits = []
             label_ids = []
+            task_ids = []
             batches_since_yield = 0
 
 
@@ -132,7 +134,7 @@ def train(config, run):
         model.train()
         mini_batch_start_time = perf_counter()
 
-        for logits, preds, label_ids, loss in run_model_on_dataset(
+        for logits, preds, label_ids, task_ids, loss in run_model_on_dataset(
             model,
             data.train,
             tokenizer,
@@ -163,6 +165,7 @@ def train(config, run):
                     logits=logits,
                     preds=preds,
                     label_ids=label_ids,
+                    task_ids=task_ids,
                     loss=loss,
                     runtime=perf_counter() - start_time,
                     ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
@@ -209,21 +212,19 @@ def log_step(
 _step_metrics = defaultdict(lambda: [])
 
 
-def compute_metrics(logits, preds, label_ids, loss, runtime, ignore_index=None):
-    preds_flat = np.array(preds).flatten()
-    label_ids_flat = np.array(label_ids).flatten()
-    if ignore_index is not None:
-        sample_weight = label_ids_flat != ignore_index
-    return {
+def compute_metrics(logits, preds, label_ids, task_ids, loss, runtime, ignore_index=None):
+    metrics = {
         # Think bAbI wants all or nothing accuracy. Can ignore padding
         # though because it's
-        "accuracy": ((preds == label_ids) | (label_ids == ignore_index))
-        .all(axis=1)
-        .mean(),
         "loss": loss,
         "examples_per_second": len(preds) / runtime,
         "sample_size": len(preds),
     }
+    is_correct = ((preds == label_ids) | (label_ids == ignore_index)).all(axis=1)
+    metrics['accuracy'] = is_correct.mean()
+    for task in set(task_ids):
+        metrics[f'accuracy_task_{task}'] = is_correct[task_ids == task].mean()
+    return metrics
 
 
 def log_summary(run_type):
@@ -274,7 +275,7 @@ def train(config, run):
         model.train()
         mini_batch_start_time = perf_counter()
 
-        for logits, preds, label_ids, loss in run_model_on_dataset(
+        for logits, preds, label_ids, task_ids, loss in run_model_on_dataset(
             model,
             data.train,
             tokenizer,
@@ -288,6 +289,7 @@ def train(config, run):
                 logits=logits,
                 preds=preds,
                 label_ids=label_ids,
+                task_ids=task_ids,
                 loss=loss,
                 runtime=perf_counter() - mini_batch_start_time,
                 ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
@@ -298,7 +300,7 @@ def train(config, run):
             model.eval()
             with torch.no_grad():
                 start_time = perf_counter()
-                logits, preds, label_ids, loss = iter(
+                logits, preds, label_ids, task_ids, loss = iter(
                     next(
                         run_model_on_dataset(
                             model, data.val, tokenizer, config, yield_freq=None
@@ -309,6 +311,7 @@ def train(config, run):
                     logits=logits,
                     preds=preds,
                     label_ids=label_ids,
+                    task_ids=task_ids,
                     loss=loss,
                     runtime=perf_counter() - start_time,
                     ignore_index=tokenizer.token_to_id[tokenizer.pad_token],

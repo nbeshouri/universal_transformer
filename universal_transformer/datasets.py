@@ -33,15 +33,6 @@ class BabiDataset:
         self.test = self.path_to_dataset(test_path, tokenizer)
 
     def path_to_dataset(self, path, tokenizer, fit_tokenizer=False):
-        tensors = []
-        for path in glob(path):
-            tensors.append(self.path_to_tensors(path, tokenizer, fit_tokenizer))
-        tensors_joined = []
-        for tensor_set in list(zip(*tensors)):
-            tensors_joined.append(torch.cat(tensor_set, dim=0))
-        return TensorDataset(*tensors_joined)
-
-    def path_to_dataset(self, path, tokenizer, fit_tokenizer=False):
         examples = []
         for path in glob(path):
             examples.extend(self.read_babi_lines(path))
@@ -81,6 +72,7 @@ class BabiDataset:
     def story_texts_to_tensors(stories, tokenizer):
         max_story_length = max(list(map(len, stories)))
         max_sent_length = float("-inf")
+        pad_id = tokenizer.token_to_id[tokenizer.pad_token]
 
         stories_ids = []
         for story in stories:
@@ -94,12 +86,12 @@ class BabiDataset:
         for story_ids in stories_ids:
             for sent_ids in story_ids:
                 for _ in range(max_sent_length - len(sent_ids)):
-                    sent_ids.append(0)
+                    sent_ids.append(pad_id)
             for _ in range(max_story_length - len(story_ids)):
-                story_ids.append([0] * max_sent_length)
+                story_ids.append([pad_id] * max_sent_length)
 
         stories_ids = torch.tensor(stories_ids)
-        stories_attn_masks = (stories_ids != 0).any(axis=-1)
+        stories_attn_masks = (stories_ids != pad_id).any(axis=-1)
         return stories_ids, stories_attn_masks
 
     def read_babi_lines(self, path):
