@@ -11,7 +11,7 @@ from universal_transformer.class_registry import registry, register_class
 
 @register_class(("dataset", "babi"))
 class BabiDataset:
-    def __init__(self, tokenizer, task="*", group_story_sents=True, debug=False):
+    def __init__(self, tokenizer, task="all", group_story_sents=True, debug=False):
         self.debug = debug
         self.group_story_sents = group_story_sents
 

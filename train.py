@@ -82,9 +82,109 @@ def run_model_on_dataset(
             and (i + 1) % yield_freq == 0
         ):
             logits = np.concatenate(logits, axis=0)
-            yield np.array(logits), np.array(preds), np.array(
-                label_ids
-            ), np.array(task_ids), total_loss / batches_since_yield
+            yield np.array(logits), np.array(preds), np.array(label_ids), np.array(
+                task_ids
+            ), total_loss / batches_since_yield
+            total_loss = 0
+            preds = []
+            logits = []
+            label_ids = []
+            task_ids = []
+            batches_since_yield = 0
+
+
+def run_model_on_dataset(
+    model,
+    dataset,
+    tokenizer,
+    config,
+    yield_freq=None,
+    optimizer=None,
+    scheduler=None,
+    teacher_forcing=True,
+):
+    dataloader = DataLoader(
+        dataset, shuffle=True, batch_size=config.batch_size, pin_memory=True
+    )
+
+    total_loss = 0
+    preds = []
+    logits = []
+    label_ids = []
+    task_ids = []
+    batches_since_yield = 0
+    criterion = nn.CrossEntropyLoss(
+        ignore_index=tokenizer.token_to_id[tokenizer.pad_token]
+    )
+
+    for i, batch in enumerate(dataloader):
+        device = torch.device(config.device)
+        batch = tuple(t.to(device) for t in batch)
+        (
+            batch_input_ids,
+            batch_output_ids,
+            batch_input_ids_padding_mask,
+            batch_output_ids_padding_mask,
+            batch_task_ids,
+        ) = batch
+
+        output_ids_inputs = batch_output_ids[:, :-1]
+        output_ids_targets = batch_output_ids[:, 1:]
+
+        if teacher_forcing:
+            batch_logits = model(
+                source_ids=batch_input_ids,
+                target_ids=output_ids_inputs,
+                source_padding_mask=batch_input_ids_padding_mask,
+                target_padding_mask=batch_output_ids_padding_mask[:, :-1],
+            )
+        else:
+            preds_so_far = output_ids_inputs[:, :1]
+            for _ in range(output_ids_inputs.size(1)):
+                batch_logits = model(
+                    source_ids=batch_input_ids,
+                    target_ids=preds_so_far,
+                    source_padding_mask=batch_input_ids_padding_mask,
+                    target_padding_mask=batch_output_ids_padding_mask[
+                        :, : preds_so_far.size(1)
+                    ],
+                )
+                preds_so_far = torch.cat(
+                    [preds_so_far, batch_logits.argmax(-1)[:, -1:]], axis=1
+                )
+
+        # Need to flatten the inputs to the criterion so that logits
+        # have shape (batch_size *sequences_length, vocab_size) and
+        # the targets have shape (batch_size * sequences_length).
+        loss = criterion(
+            batch_logits.view(-1, batch_logits.size(-1)), output_ids_targets.reshape(-1)
+        )
+
+        total_loss += loss.item() * len(batch[0])  # Convert from mean to sum.
+
+        if model.training:
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            if scheduler is not None:
+                scheduler.step()
+
+        batch_logits = batch_logits.detach().cpu().numpy()
+        logits.append(batch_logits)
+        preds.extend(np.argmax(batch_logits, axis=-1))
+        label_ids.extend(output_ids_targets.detach().cpu().numpy())
+        task_ids.extend(batch_task_ids.detach().cpu().numpy())
+        batches_since_yield += 1
+
+        if (
+            i == len(dataloader) - 1
+            or yield_freq is not None
+            and (i + 1) % yield_freq == 0
+        ):
+            logits = np.concatenate(logits, axis=0)
+            yield np.array(logits), np.array(preds), np.array(label_ids), np.array(
+                task_ids
+            ), total_loss / batches_since_yield
             total_loss = 0
             preds = []
             logits = []
@@ -212,7 +312,9 @@ def log_step(
 _step_metrics = defaultdict(lambda: [])
 
 
-def compute_metrics(logits, preds, label_ids, task_ids, loss, runtime, ignore_index=None):
+def compute_metrics(
+    logits, preds, label_ids, task_ids, loss, runtime, ignore_index=None
+):
     metrics = {
         # Think bAbI wants all or nothing accuracy. Can ignore padding
         # though because it's
@@ -221,9 +323,9 @@ def compute_metrics(logits, preds, label_ids, task_ids, loss, runtime, ignore_in
         "sample_size": len(preds),
     }
     is_correct = ((preds == label_ids) | (label_ids == ignore_index)).all(axis=1)
-    metrics['accuracy'] = is_correct.mean()
+    metrics["accuracy"] = is_correct.mean()
     for task in set(task_ids):
-        metrics[f'accuracy_task_{task}'] = is_correct[task_ids == task].mean()
+        metrics[f"accuracy_task_{task}"] = is_correct[task_ids == task].mean()
     return metrics
 
 
@@ -330,6 +432,33 @@ def train(config, run):
             model.train()  # Need to re-enter training model.
 
             mini_batch_start_time = perf_counter()
+
+    # Test
+    model.eval()
+    with torch.no_grad():
+        start_time = perf_counter()
+        logits, preds, label_ids, task_ids, loss = iter(
+            next(
+                run_model_on_dataset(
+                    model,
+                    data.test,
+                    tokenizer,
+                    config,
+                    teacher_forcing=False,
+                    yield_freq=None,
+                )
+            )
+        )
+        test_metrics = compute_metrics(
+            logits=logits,
+            preds=preds,
+            label_ids=label_ids,
+            task_ids=task_ids,
+            loss=loss,
+            runtime=perf_counter() - start_time,
+            ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
+        )
+        log_step("test", test_metrics, step=step, epoch=epoch)
 
     if config.checkpoint_metric is not None and run.name is not None:
         # Save the best model weights.
