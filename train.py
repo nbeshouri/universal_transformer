@@ -434,31 +434,34 @@ def train(config, run):
             mini_batch_start_time = perf_counter()
 
     # Test
-    model.eval()
-    with torch.no_grad():
-        start_time = perf_counter()
-        logits, preds, label_ids, task_ids, loss = iter(
-            next(
-                run_model_on_dataset(
-                    model,
-                    data.test,
-                    tokenizer,
-                    config,
-                    teacher_forcing=False,
-                    yield_freq=None,
+    if hasattr(data, 'test'):
+        if config.checkpoint_metric is not None:
+            model.load_state_dict(torch.load(TEMP_WEIGHTS_PATH))
+        model.eval()
+        with torch.no_grad():
+            start_time = perf_counter()
+            logits, preds, label_ids, task_ids, loss = iter(
+                next(
+                    run_model_on_dataset(
+                        model,
+                        data.test,
+                        tokenizer,
+                        config,
+                        teacher_forcing=False,
+                        yield_freq=None,
+                    )
                 )
             )
-        )
-        test_metrics = compute_metrics(
-            logits=logits,
-            preds=preds,
-            label_ids=label_ids,
-            task_ids=task_ids,
-            loss=loss,
-            runtime=perf_counter() - start_time,
-            ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
-        )
-        log_step("test", test_metrics, step=step, epoch=epoch)
+            test_metrics = compute_metrics(
+                logits=logits,
+                preds=preds,
+                label_ids=label_ids,
+                task_ids=task_ids,
+                loss=loss,
+                runtime=perf_counter() - start_time,
+                ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
+            )
+            log_step("test", test_metrics, step=step, epoch=epoch)
 
     if config.checkpoint_metric is not None and run.name is not None:
         # Save the best model weights.
