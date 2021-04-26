@@ -1,11 +1,8 @@
 import torch
 import torch.nn as nn
 
-from universal_transformer.class_registry import registry, register_class
-from universal_transformer.transformers import (
-    UniversalTransformer,
-    VanillaTransformer,
-)
+from universal_transformer.class_registry import register_class, registry
+from universal_transformer.transformers import UniversalTransformer, VanillaTransformer
 
 
 @register_class(("model", "vanilla_transformer"), transformer_class=VanillaTransformer)

@@ -1,7 +1,7 @@
 from collections import Counter
 from itertools import chain
 
-from universal_transformer.class_registry import registry, register_class
+from universal_transformer.class_registry import register_class, registry
 
 
 class TokenizerBase:
@@ -114,10 +114,10 @@ class TokenizerBase:
 @register_class(("tokenizer", "en_core_web_lg"), name="en_core_web_lg", lower=True)
 class SpacyTokenizer(TokenizerBase):
     def __init__(self, name, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(hash_key=name, **kwargs)
         import spacy
 
-        self.spacy_model = spacy.load(name)
+        self.spacy_model = spacy.load(name, disable=["tagger", "parser", "ner"])
 
     def _tokenize(self, text):
         return tuple(token.text for token in self.spacy_model.tokenizer(text))

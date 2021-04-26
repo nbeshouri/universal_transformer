@@ -1,6 +1,6 @@
 import numpy as np
 
-from universal_transformer.class_registry import registry, register_class
+from universal_transformer.class_registry import register_class, registry
 
 
 class VectorsBase:

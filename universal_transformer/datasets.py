@@ -1,34 +1,42 @@
 import os
 import re
+import time
 from glob import glob
 
+import joblib
 import torch
 from torch.utils.data import TensorDataset
 
-from universal_transformer import DATA_DIR_PATH
-from universal_transformer.class_registry import registry, register_class
+from universal_transformer import DATA_DIR_PATH, logger
+from universal_transformer.class_registry import register_class, registry
+
+memory = joblib.Memory(cachedir=os.path.join(DATA_DIR_PATH, "joblib_cache", "datasets"))
 
 
 @register_class(("dataset", "babi"))
 class BabiDataset:
-    def __init__(self, tokenizer, task="all", group_story_sents=True, debug=False):
+    def __init__(
+        self, tokenizer, task="all", version="10k", group_story_sents=True, debug=False
+    ):
         self.debug = debug
         self.group_story_sents = group_story_sents
 
-        prefix = "qa*" if task == "all" else f"qa{task}"
+        task_prefix = "qa*" if task == "all" else f"qa{task}"
+        version = "en-valid-10k" if version == "10k" else "en-valid"
 
         train_path = os.path.join(
-            DATA_DIR_PATH, "babi", "en-valid-10k", f"{prefix}_train.txt"
+            DATA_DIR_PATH, "babi", version, f"{task_prefix}_train.txt"
         )
+
         self.train = self.path_to_dataset(train_path, tokenizer, fit_tokenizer=True)
 
         val_path = os.path.join(
-            DATA_DIR_PATH, "babi", "en-valid-10k", f"{prefix}_valid.txt"
+            DATA_DIR_PATH, "babi", version, f"{task_prefix}_valid.txt"
         )
         self.val = self.path_to_dataset(val_path, tokenizer)
 
         test_path = os.path.join(
-            DATA_DIR_PATH, "babi", "en-valid-10k", f"{prefix}_test.txt"
+            DATA_DIR_PATH, "babi", version, f"{task_prefix}_test.txt"
         )
         self.test = self.path_to_dataset(test_path, tokenizer)
 
@@ -36,10 +44,15 @@ class BabiDataset:
         examples = []
         for path in glob(path):
             examples.extend(self.read_babi_lines(path))
+
         stories, answers, task_ids = zip(*examples)
+        logger.info()
+        print(f"Starting to compute for path: {path}")
+        start_time = time.time()
         tensors = self.stories_to_tensors(
             stories, answers, task_ids, tokenizer, fit_tokenizer
         )
+        print(f"Done to computing tensors. Took {time.time() - start_time} seconds.")
         return TensorDataset(*tensors)
 
     def stories_to_tensors(
@@ -140,13 +153,25 @@ def texts_to_tensors(texts, tokenizer):
 def get_dataset(config, tokenizer=None):
     key = ("dataset", config.dataset)
     if key in registry:
-        cls, kwargs = registry[key]
+        cls, dataset_kwargs = registry[key]
         accepted_args = set(cls.__init__.__code__.co_varnames)
         accepted_args.remove("self")
-        kwargs.update(
+        dataset_kwargs.update(
             {k.replace("dataset.", ""): v for k, v in config.items() if "dataset." in k}
         )
-        kwargs["tokenizer"] = tokenizer
-        return cls(**kwargs)
+        dataset_kwargs_tuple = tuple(sorted(dataset_kwargs.items()))
+        tokenizer_kwargs = {k: v for k, v in config.items() if "tokenizer." in k}
+        tokenizer_kwargs_tuple = tuple(sorted(tokenizer_kwargs.items()))
+        return _get_dataset(
+            cls, tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple
+        )
 
     raise KeyError("Dataset not found!")
+
+
+@memory.cache(ignore=["tokenizer"])
+def _get_dataset(cls, tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple):
+    # TODO: tokenizer_kwargs_tuple is here just for hashing. There's really no
+    # reason why we couldn't be creating the tokenizer here directly. It's
+    # worthless if it isn't fitted, so it's really dependent on the dataset.
+    return cls(tokenizer=tokenizer, **dict(dataset_kwargs_tuple)), tokenizer

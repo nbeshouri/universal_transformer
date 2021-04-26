@@ -339,8 +339,7 @@ def log_summary(run_type):
 def train(config, run):
     # Load stuff based on the config.
     tokenizer = tokenizers.get_tokenizer(config)
-
-    data = datasets.get_dataset(config, tokenizer)
+    data, tokenizer = datasets.get_dataset(config, tokenizer)
     config.train_size = len(data.train)
     config.val_size = len(data.val)
 
@@ -434,7 +433,7 @@ def train(config, run):
             mini_batch_start_time = perf_counter()
 
     # Test
-    if hasattr(data, 'test'):
+    if hasattr(data, "test"):
         if config.checkpoint_metric is not None:
             model.load_state_dict(torch.load(TEMP_WEIGHTS_PATH))
         model.eval()
