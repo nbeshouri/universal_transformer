@@ -170,7 +170,7 @@ def get_dataset(config, tokenizer=None):
 
 @memory.cache(ignore=["tokenizer"])
 def _get_dataset(cls, tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple):
-    # TODO: tokenizer_kwargs_tuple is here just for hashing. There's really no
-    # reason why we couldn't be creating the tokenizer here directly. It's
+    # TODO: tokenizer_kwargs_tuple is here just for the caching. There's
+    # really no reason why we couldn't be creating the tokenizer here directly. It's
     # worthless if it isn't fitted, so it's really dependent on the dataset.
     return cls(tokenizer=tokenizer, **dict(dataset_kwargs_tuple)), tokenizer
