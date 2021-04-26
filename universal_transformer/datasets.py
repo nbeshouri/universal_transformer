@@ -46,13 +46,12 @@ class BabiDataset:
             examples.extend(self.read_babi_lines(path))
 
         stories, answers, task_ids = zip(*examples)
-        logger.info()
-        print(f"Starting to compute for path: {path}")
+        logger.info(f"Starting to compute for path: {path}")
         start_time = time.time()
         tensors = self.stories_to_tensors(
             stories, answers, task_ids, tokenizer, fit_tokenizer
         )
-        print(f"Done to computing tensors. Took {time.time() - start_time} seconds.")
+        logger.info(f"Done to computing tensors. Took {time.time() - start_time} seconds.")
         return TensorDataset(*tensors)
 
     def stories_to_tensors(
