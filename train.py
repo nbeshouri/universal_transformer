@@ -502,7 +502,7 @@ if __name__ == "__main__":
     if args.configs is not None:
         os.environ["WANDB_CONFIG_PATHS"] = args.configs
 
-    run = wandb.init(entity="nbeshouri", project=args.project)
+    run = wandb.init(project=args.project)
 
     config = ConfigWrapper(wandb.config)
 
