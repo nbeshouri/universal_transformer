@@ -76,6 +76,7 @@ class BagOfVectorsEncoder(nn.Module):
     def forward(self, x):
         # mask_indices has shape (1, num_words).
         mask_indices = torch.arange(x.size(-2)).reshape(1, -1)
+        mask_indices = mask_indices.to(x.device)
         # mask has shape (1, num_words, embedding_size). This will
         # implicitly become (1, 1, num_words, embedding_size) and then
         # (batch_size, num_sents, num_words, embedding_size) when
