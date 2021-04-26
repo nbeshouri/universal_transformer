@@ -46,7 +46,7 @@ class BabiDataset:
             examples.extend(self.read_babi_lines(path))
 
         stories, answers, task_ids = zip(*examples)
-        logger.info(f"Starting to compute for path: {path}")
+        logger.info(f"Starting to compute for tensors for path: {path}")
         start_time = time.time()
         tensors = self.stories_to_tensors(
             stories, answers, task_ids, tokenizer, fit_tokenizer
