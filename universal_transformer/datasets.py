@@ -15,20 +15,20 @@ class BabiDataset:
         self.debug = debug
         self.group_story_sents = group_story_sents
 
-        prefix = "qa*t" if task == "all" else f"qa{task}"
+        prefix = "qa*" if task == "all" else f"qa{task}"
 
         train_path = os.path.join(
-            DATA_DIR_PATH, "babi", "en-valid", f"{prefix}_train.txt"
+            DATA_DIR_PATH, "babi", "en-valid-10k", f"{prefix}_train.txt"
         )
         self.train = self.path_to_dataset(train_path, tokenizer, fit_tokenizer=True)
 
         val_path = os.path.join(
-            DATA_DIR_PATH, "babi", "en-valid", f"{prefix}_valid.txt"
+            DATA_DIR_PATH, "babi", "en-valid-10k", f"{prefix}_valid.txt"
         )
         self.val = self.path_to_dataset(val_path, tokenizer)
 
         test_path = os.path.join(
-            DATA_DIR_PATH, "babi", "en-valid", f"{prefix}_test.txt"
+            DATA_DIR_PATH, "babi", "en-valid-10k", f"{prefix}_test.txt"
         )
         self.test = self.path_to_dataset(test_path, tokenizer)
 
