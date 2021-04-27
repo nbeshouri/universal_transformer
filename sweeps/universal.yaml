@@ -15,11 +15,11 @@ parameters:
   optimizer:
     value: 'adam'
   epochs:
-    value: 40
+    value: 100
   batch_size:
     values: [32, 64]
   lr:
-    values: [0.0001, 0.00001, 0.001]
+    values: [0.0001, 0.001]
   log:
     value: null
   learning_rate_decay_schedule:
@@ -35,7 +35,7 @@ parameters:
   dataset.version:
     value: '1k'
   model.nhead:
-    values: [4, 8]
+    values: [2, 3]
   model.max_steps:
     value: 6
   model.halting_threshold:
