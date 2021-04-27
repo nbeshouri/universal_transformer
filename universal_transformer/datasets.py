@@ -11,7 +11,9 @@ from torch.utils.data import TensorDataset
 from universal_transformer import DATA_DIR_PATH, logger
 from universal_transformer.class_registry import register_class, registry
 
-memory = joblib.Memory(cachedir=os.path.join(DATA_DIR_PATH, "joblib_cache", "datasets", sys.platform))
+memory = joblib.Memory(
+    cachedir=os.path.join(DATA_DIR_PATH, "joblib_cache", "datasets", sys.platform)
+)
 
 
 @register_class(("dataset", "babi"))
@@ -52,7 +54,9 @@ class BabiDataset:
         tensors = self.stories_to_tensors(
             stories, answers, task_ids, tokenizer, fit_tokenizer
         )
-        logger.info(f"Done to computing tensors. Took {time.time() - start_time} seconds.")
+        logger.info(
+            f"Done to computing tensors. Took {time.time() - start_time} seconds."
+        )
         return TensorDataset(*tensors)
 
     def stories_to_tensors(

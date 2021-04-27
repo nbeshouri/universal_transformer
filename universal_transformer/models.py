@@ -18,9 +18,7 @@ class TransformerModelBase(nn.Module):
         self.group_story_sents = group_story_sents
         self.embedding_size = embedding_matrix.shape[1]
         self.vocab_size = embedding_matrix.shape[0]
-        self.transformer = self.transformer_class(
-            d_model=self.embedding_size, **kwargs
-        )
+        self.transformer = self.transformer_class(d_model=self.embedding_size, **kwargs)
         self.embedding = nn.Embedding.from_pretrained(
             torch.FloatTensor(embedding_matrix)
         )
