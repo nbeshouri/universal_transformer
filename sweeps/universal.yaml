@@ -35,7 +35,7 @@ parameters:
   dataset.version:
     value: '1k'
   model.nhead:
-    values: [4, 8],
+    values: [4, 8]
   model.max_steps:
     value: 6
   model.halting_threshold:
