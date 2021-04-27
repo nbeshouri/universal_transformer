@@ -1,6 +1,4 @@
 wandb_version: 1
-undersample:
-  value: True
 tokenizer:
   value: 'en_core_web_md'
 vectors:

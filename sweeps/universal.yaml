@@ -1,0 +1,43 @@
+program: train.py
+method: grid
+metric:
+  goal: minimize
+  name: val_accuracy
+parameters:
+  tokenizer:
+    value: 'en_core_web_md'
+  vectors:
+    value: 'en_core_web_md'
+  dataset:
+    value: 'babi'
+  model:
+    value: 'universal_transformer'
+  optimizer:
+    value: 'adam'
+  epochs:
+    value: 40
+  batch_size:
+    values: [32, 64]
+  lr:
+    values: [0.0001, 0.00001, 0.001]
+  log:
+    value: null
+  learning_rate_decay_schedule:
+    value: null
+  log_freq:
+    value: null
+  checkpoint_metric:
+    value: 'accuracy'
+  dataset.debug:
+    value: False
+  dataset.task:
+    value: 'all'
+  dataset.version:
+    value: '1k'
+  model.nhead:
+    values: [4, 8],
+  model.max_steps:
+    value: 6
+  model.halting_threshold:
+    values: [null, 0.9]
+

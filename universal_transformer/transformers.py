@@ -60,7 +60,7 @@ class UniversalTransformer(nn.Transformer):
         nhead=8,
         dropout=0.1,
         max_length=5000,
-        max_steps=3,
+        max_steps=6,
         halting_threshold=None,
         transition_hidden_size=None,
         transition_dropout=0.2,
