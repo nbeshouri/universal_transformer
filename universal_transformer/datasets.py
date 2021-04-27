@@ -172,7 +172,7 @@ def get_dataset(config, tokenizer=None):
     raise KeyError("Dataset not found!")
 
 
-# @memory.cache(ignore=["tokenizer"])
+@memory.cache(ignore=["tokenizer"])
 def _get_dataset(cls, tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple):
     # TODO: tokenizer_kwargs_tuple is here just for the caching. There's
     # really no reason why we couldn't be creating the tokenizer here directly. It's
