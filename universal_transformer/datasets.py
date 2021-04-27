@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import time
 from glob import glob
 
@@ -10,7 +11,7 @@ from torch.utils.data import TensorDataset
 from universal_transformer import DATA_DIR_PATH, logger
 from universal_transformer.class_registry import register_class, registry
 
-memory = joblib.Memory(cachedir=os.path.join(DATA_DIR_PATH, "joblib_cache", "datasets"))
+memory = joblib.Memory(cachedir=os.path.join(DATA_DIR_PATH, "joblib_cache", "datasets", sys.platform))
 
 
 @register_class(("dataset", "babi"))
@@ -40,14 +41,14 @@ class BabiDataset:
         )
         self.test = self.path_to_dataset(test_path, tokenizer)
 
-    def path_to_dataset(self, path, tokenizer, fit_tokenizer=False):
+    def path_to_dataset(self, glob_path, tokenizer, fit_tokenizer=False):
         examples = []
-        for path in glob(path):
+        for path in glob(glob_path):
             examples.extend(self.read_babi_lines(path))
 
         stories, answers, task_ids = zip(*examples)
-        logger.info(f"Starting to compute for tensors for path: {path}")
         start_time = time.time()
+        logger.info(f"Starting to compute for tensors for path: {glob_path}")
         tensors = self.stories_to_tensors(
             stories, answers, task_ids, tokenizer, fit_tokenizer
         )
@@ -58,11 +59,13 @@ class BabiDataset:
         self, stories, answers, task_ids, tokenizer, fit_tokenizer=False
     ):
         assert len(stories) == len(answers)
-
+        logger.info(f"Starting to fit tokenizer.")
         stories_flat = tuple(map(lambda x: " ".join(x), stories))
         if fit_tokenizer:
             tokenizer.fit(stories_flat + answers)
+        logger.info("Done fitting tokenizer.")
 
+        logger.info(f"Starting to convert stories.")
         answers_ids, answers_attn_masks = texts_to_tensors(answers, tokenizer)
         if self.group_story_sents:
             stories_ids, stories_attn_masks = self.story_texts_to_tensors(
@@ -70,6 +73,7 @@ class BabiDataset:
             )
         else:
             stories_ids, stories_attn_masks = texts_to_tensors(stories_flat, tokenizer)
+        logger.info(f"Done converting stories.")
 
         task_numbers = torch.tensor(task_ids)
         return (
@@ -168,7 +172,7 @@ def get_dataset(config, tokenizer=None):
     raise KeyError("Dataset not found!")
 
 
-@memory.cache(ignore=["tokenizer"])
+# @memory.cache(ignore=["tokenizer"])
 def _get_dataset(cls, tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple):
     # TODO: tokenizer_kwargs_tuple is here just for the caching. There's
     # really no reason why we couldn't be creating the tokenizer here directly. It's

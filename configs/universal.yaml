@@ -26,6 +26,8 @@ log_freq:
 checkpoint_metric:
   value: 'accuracy'
 dataset.debug:
-  value: True
+  value: False
 dataset.task:
   value: 'all'
+dataset.version:
+  value: '1k'
