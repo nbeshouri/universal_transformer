@@ -1,7 +1,7 @@
 program: train.py
 method: grid
 metric:
-  goal: minimize
+  goal: maximize
   name: val_accuracy
 parameters:
   tokenizer:
@@ -15,7 +15,7 @@ parameters:
   optimizer:
     value: 'adam'
   epochs:
-    value: 100
+    value: 200
   batch_size:
     values: [32, 64]
   lr:
