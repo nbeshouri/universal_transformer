@@ -324,8 +324,12 @@ def compute_metrics(
     }
     is_correct = ((preds == label_ids) | (label_ids == ignore_index)).all(axis=1)
     metrics["accuracy"] = is_correct.mean()
+    solved_tasks = 0
     for task in set(task_ids):
         metrics[f"accuracy_task_{task}"] = is_correct[task_ids == task].mean()
+        if metrics[f"accuracy_task_{task}"] >= 0.95:
+            solved_tasks += 1
+    metrics["solved_tasks"] = solved_tasks
     return metrics
 
 
