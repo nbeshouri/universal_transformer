@@ -285,7 +285,7 @@ def train(config, run):
 
             mini_batch_start_time = perf_counter()
 
-    if config.checkpoint_metric is not None:
+    if config.checkpoint_metric is not None and config.save_weights:
         # Save the best model weights.
         artifact = wandb.Artifact(
             f"{run.name.replace('-', '_')}_best_weights", type="weights"

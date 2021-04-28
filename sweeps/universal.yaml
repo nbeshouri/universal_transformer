@@ -15,9 +15,9 @@ parameters:
   optimizer:
     value: 'adam'
   epochs:
-    value: 200
+    value: 320
   batch_size:
-    values: [32, 64]
+    values: [128]
   lr:
     values: [0.0001, 0.001]
   log:
