@@ -16,8 +16,13 @@ class VanillaTransformer(nn.Transformer):
 
     """
 
-    def __init__(self, d_model, *args, max_length=5000, **kwargs):
-        super().__init__(d_model=d_model, *args, **kwargs)
+    def __init__(self, d_model, *args, max_length=5000, num_layers=6, **kwargs):
+        super().__init__(
+            d_model=d_model,
+            num_encoder_layers=num_layers,
+            num_decoder_layers=num_layers,
+            **kwargs
+        )
         self.positional_embedding = PositionalEncoding(
             d_model=d_model, dropout=0.1, max_length=max_length
         )
