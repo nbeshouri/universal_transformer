@@ -10,9 +10,9 @@ model:
 optimizer:
   value: 'adam'
 epochs:
-  value: 10
+  value: 100
 batch_size:
-  value: 8
+  value: 128
 lr:
   value: 0.0001
 log:
@@ -26,6 +26,8 @@ checkpoint_metric:
 dataset.debug:
   value: False
 dataset.task:
-  value: 'all'
+  value: 3
 dataset.version:
   value: '1k'
+model.nhead:
+  value: 2

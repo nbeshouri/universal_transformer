@@ -1,6 +1,4 @@
 wandb_version: 1
-undersample:
-  value: True
 tokenizer:
   value: 'en_core_web_md'
 vectors:
@@ -12,9 +10,9 @@ model:
 optimizer:
   value: 'adam'
 epochs:
-  value: 20
+  value: 100
 batch_size:
-  value: 8
+  value: 128
 lr:
   value: 0.0001
 log:
@@ -24,6 +22,12 @@ learning_rate_decay_schedule:
 log_freq:
   value: null
 checkpoint_metric:
-  value: 'loss'
+  value: 'accuracy'
 dataset.debug:
-  value: True
+  value: False
+dataset.task:
+  value: 3
+dataset.version:
+  value: '1k'
+model.nhead:
+  value: 2
