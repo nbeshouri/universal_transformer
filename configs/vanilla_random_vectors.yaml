@@ -1,0 +1,37 @@
+wandb_version: 1
+tokenizer:
+  value: 'en_core_web_md'
+vectors:
+  value: 'en_core_web_md'
+dataset:
+  value: 'babi'
+model:
+  value: 'vanilla_transformer'
+optimizer:
+  value: 'adam'
+epochs:
+  value: 200
+batch_size:
+  value: 128
+lr:
+  value: 0.0001
+log:
+  value: null
+learning_rate_decay_schedule:
+  value: null
+log_freq:
+  value: null
+checkpoint_metric:
+  value: 'accuracy'
+dataset.debug:
+  value: False
+dataset.task:
+  value: 3
+dataset.version:
+  value: '10k'
+model.nhead:
+  value: 3
+model.num_layers:
+  value: 6
+model.halting_threshold:
+  value: 0.9

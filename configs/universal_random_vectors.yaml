@@ -1,0 +1,35 @@
+wandb_version: 1
+tokenizer:
+  value: 'random'
+vectors.vector_size:
+  value: 128
+dataset:
+  value: 'babi'
+model:
+  value: 'universal_transformer'
+optimizer:
+  value: 'adam'
+epochs:
+  value: 200
+batch_size:
+  value: 128
+lr:
+  value: 0.0001
+log:
+  value: null
+learning_rate_decay_schedule:
+  value: null
+log_freq:
+  value: null
+checkpoint_metric:
+  value: 'accuracy'
+dataset.debug:
+  value: False
+dataset.task:
+  value: 3
+dataset.version:
+  value: '10k'
+model.nhead:
+  value: 2
+model.max_steps:
+  value: 6
