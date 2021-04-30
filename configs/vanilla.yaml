@@ -30,4 +30,8 @@ dataset.task:
 dataset.version:
   value: '1k'
 model.nhead:
-  value: 2
+  value: 3
+model.num_layers:
+  value: 6
+model.halting_threshold:
+  value: 0.9

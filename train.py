@@ -30,7 +30,7 @@ def run_model_on_dataset(
     logits = []
     label_ids = []
     task_ids = []
-    batches_since_yield = 0
+    instances_since_yield = 0
     criterion = nn.CrossEntropyLoss(
         ignore_index=tokenizer.token_to_id[tokenizer.pad_token]
     )
@@ -60,7 +60,7 @@ def run_model_on_dataset(
             batch_logits.view(-1, batch_logits.size(-1)), output_ids_targets.reshape(-1)
         )
 
-        total_loss += loss.item() * len(batch[0])  # Convert from mean to sum.
+        total_loss += loss.item() * batch.size(0)  # Convert from mean to sum.
 
         if model.training:
             optimizer.zero_grad()
@@ -74,7 +74,7 @@ def run_model_on_dataset(
         preds.extend(np.argmax(batch_logits, axis=-1))
         label_ids.extend(output_ids_targets.detach().cpu().numpy())
         task_ids.extend(batch_task_ids.detach().cpu().numpy())
-        batches_since_yield += 1
+        instances_since_yield += batch.size(0)
 
         if (
             i == len(dataloader) - 1
@@ -84,13 +84,13 @@ def run_model_on_dataset(
             logits = np.concatenate(logits, axis=0)
             yield np.array(logits), np.array(preds), np.array(label_ids), np.array(
                 task_ids
-            ), total_loss / batches_since_yield
+            ), total_loss / instances_since_yield
             total_loss = 0
+            instances_since_yield = 0
             preds = []
             logits = []
             label_ids = []
             task_ids = []
-            batches_since_yield = 0
 
 
 def run_model_on_dataset(

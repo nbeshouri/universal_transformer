@@ -30,4 +30,6 @@ dataset.task:
 dataset.version:
   value: '1k'
 model.nhead:
-  value: 2
+  value: 3
+model.num_steps:
+  value: 6
