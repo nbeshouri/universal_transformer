@@ -124,8 +124,13 @@ class SpacyTokenizer(TokenizerBase):
 
 
 def get_tokenizer(config):
-    key = ("tokenizer", config.vectors)
+    key = ("tokenizer", config.tokenizer)
     if key in registry:
         cls, kwargs = registry[key]
+        accepted_args = set(cls.__init__.__code__.co_varnames)
+        accepted_args.remove("self")
+        kwargs.update(
+            {k.replace("tokenizer.", ""): v for k, v in config.items() if "tokenizer." in k}
+        )
         return cls(**kwargs)
     raise KeyError("Tokenizer not found!")

@@ -11,7 +11,11 @@ from universal_transformer.transformers import UniversalTransformer, VanillaTran
 )
 class TransformerModelBase(nn.Module):
     def __init__(
-        self, embedding_matrix, transformer_class=None, group_story_sents=True, **kwargs
+        self,
+        embedding_matrix=None,
+        transformer_class=None,
+        group_story_sents=True,
+        **kwargs
     ):
         super().__init__()
         self.transformer_class = transformer_class
