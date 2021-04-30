@@ -28,7 +28,7 @@ dataset.debug:
 dataset.task:
   value: 3
 dataset.version:
-  value: '1k'
+  value: '10k'
 model.nhead:
   value: 3
 model.num_layers:
