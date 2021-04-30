@@ -31,5 +31,5 @@ dataset.version:
   value: '1k'
 model.nhead:
   value: 3
-model.num_steps:
+model.max_steps:
   value: 6
