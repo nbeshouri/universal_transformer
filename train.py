@@ -440,6 +440,9 @@ def train(config, run):
     if hasattr(data, "test"):
         if config.checkpoint_metric is not None:
             model.load_state_dict(torch.load(TEMP_WEIGHTS_PATH))
+            logger.info(
+                f"Loaded checkpoint weights for metric: {config.checkpoint_metric}."
+            )
         model.eval()
         with torch.no_grad():
             start_time = perf_counter()
