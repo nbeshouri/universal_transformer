@@ -130,7 +130,11 @@ def get_tokenizer(config):
         accepted_args = set(cls.__init__.__code__.co_varnames)
         accepted_args.remove("self")
         kwargs.update(
-            {k.replace("tokenizer.", ""): v for k, v in config.items() if "tokenizer." in k}
+            {
+                k.replace("tokenizer.", ""): v
+                for k, v in config.items()
+                if "tokenizer." in k
+            }
         )
         return cls(**kwargs)
     raise KeyError("Tokenizer not found!")

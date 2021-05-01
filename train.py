@@ -47,12 +47,17 @@ def run_model_on_dataset(
         ) = batch
         output_ids_inputs = batch_output_ids[:, :-1]
         output_ids_targets = batch_output_ids[:, 1:]
-        batch_logits = model(
-            source_ids=batch_input_ids,
-            target_ids=output_ids_inputs,
-            source_padding_mask=batch_input_ids_padding_mask,
-            target_padding_mask=batch_output_ids_padding_mask[:, :-1],
-        )
+        # batch_logits = model(
+        #     source_ids=batch_input_ids,
+        #     target_ids=output_ids_inputs,
+        #     source_padding_mask=batch_input_ids_padding_mask,
+        #     target_padding_mask=batch_output_ids_padding_mask[:, :-1],
+        # )
+        print("hi")
+        extra_output = {}
+        if isinstance(batch_logits, tuple):
+            batch_logits, extra_output = batch_logits
+
         # Need to flatten the inputs to the criterion so that logits
         # have shape (batch_size *sequences_length, vocab_size) and
         # the targets have shape (batch_size * sequences_length).
@@ -132,16 +137,18 @@ def run_model_on_dataset(
         output_ids_targets = batch_output_ids[:, 1:]
 
         if teacher_forcing:
-            batch_logits = model(
+            batch_logits, extra_output = model(
                 source_ids=batch_input_ids,
                 target_ids=output_ids_inputs,
                 source_padding_mask=batch_input_ids_padding_mask,
                 target_padding_mask=batch_output_ids_padding_mask[:, :-1],
             )
+            if isinstance(batch_logits, tuple):
+                batch_logits, extra_output = batch_logits
         else:
             preds_so_far = output_ids_inputs[:, :1]
             for _ in range(output_ids_inputs.size(1)):
-                batch_logits = model(
+                batch_logits, extra_output = model(
                     source_ids=batch_input_ids,
                     target_ids=preds_so_far,
                     source_padding_mask=batch_input_ids_padding_mask,
@@ -159,6 +166,20 @@ def run_model_on_dataset(
         loss = criterion(
             batch_logits.view(-1, batch_logits.size(-1)), output_ids_targets.reshape(-1)
         )
+
+        if config.dynamic_halting_loss_weight:
+            input_halting_loss = extra_output["input_n_updates"] + extra_output["input_remainders"]
+            input_halting_loss *= batch_input_ids_padding_mask
+            input_halting_loss = input_halting_loss.sum() / batch_input_ids_padding_mask.sum()
+
+            mask = batch_output_ids_padding_mask[:, 1:]
+            output_halting_loss = extra_output["output_n_updates"] + extra_output["output_remainders"]
+            output_halting_loss *= mask
+            output_halting_loss = input_halting_loss.sum() / mask.sum()
+
+            loss += config.dynamic_halting_loss_weight * (
+                input_halting_loss + output_halting_loss
+            )
 
         total_loss += loss.item() * len(batch[0])  # Convert from mean to sum.
 
@@ -191,153 +212,6 @@ def run_model_on_dataset(
             label_ids = []
             task_ids = []
             batches_since_yield = 0
-
-
-def train(config, run):
-    # Load stuff based on the config.
-    tokenizer = tokenizers.get_tokenizer(config)
-
-    data = datasets.get_dataset(config, tokenizer)
-    config.train_size = len(data.train)
-    config.val_size = len(data.val)
-
-    embedding_matrix = vectors.get_vectors(config, tokenizer)
-
-    model = models.get_model(config, embedding_matrix)
-
-    if config.log is not None:
-        wandb.watch(model, log=config.log)
-
-    device = torch.device(config.device)
-    model.to(device)
-
-    best_performance = None
-    step = 0
-    for epoch in range(1, config.epochs + 1):
-        if config.optimizer == "adam":
-            optimizer = Adam(model.parameters(), lr=config.lr)
-        elif config.optimizer == "rmsprop":
-            optimizer = RMSprop(model.parameters(), lr=config.lr)
-        else:
-            raise ValueError(f'"{config.optimizer}" is an invalid optimizer name!')
-
-        scheduler = None
-        if config.get("learning_rate_decay_schedule", None) is not None:
-            if config.learning_rate_decay_schedule == "linear":
-                scheduler = get_linear_schedule_with_warmup(
-                    optimizer,
-                    num_warmup_steps=0,
-                    num_training_steps=len(data.train) * config.epochs,
-                )
-            else:
-                raise ValueError(f'"{config.optimizer}" is an invalid optimizer name!')
-        model.train()
-        mini_batch_start_time = perf_counter()
-
-        for logits, preds, label_ids, task_ids, loss in run_model_on_dataset(
-            model,
-            data.train,
-            tokenizer,
-            config,
-            yield_freq=config.get("log_freq"),
-            optimizer=optimizer,
-            scheduler=scheduler,
-        ):
-            step += 1
-            train_metrics = compute_metrics(
-                logits=logits,
-                preds=preds,
-                label_ids=label_ids,
-                loss=loss,
-                runtime=perf_counter() - mini_batch_start_time,
-                ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
-            )
-            log_step("train", train_metrics, step=step, epoch=epoch)
-
-            # Validate
-            model.eval()
-            with torch.no_grad():
-                start_time = perf_counter()
-                logits, preds, label_ids, loss = iter(
-                    next(run_model_on_dataset(model, data.val, config, yield_freq=None))
-                )
-                val_metrics = compute_metrics(
-                    logits=logits,
-                    preds=preds,
-                    label_ids=label_ids,
-                    task_ids=task_ids,
-                    loss=loss,
-                    runtime=perf_counter() - start_time,
-                    ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
-                )
-                log_step("val", val_metrics, step=step, epoch=epoch)
-                log_summary("val")
-
-                if config.checkpoint_metric is not None:
-                    if (
-                        best_performance is None
-                        or val_metrics[config.checkpoint_metric] > best_performance
-                    ):
-                        best_performance = val_metrics[config.checkpoint_metric]
-                        torch.save(model.state_dict(), TEMP_WEIGHTS_PATH)
-
-            model.train()  # Need to re-enter training model.
-
-            mini_batch_start_time = perf_counter()
-
-    if config.checkpoint_metric is not None and config.save_weights:
-        # Save the best model weights.
-        artifact = wandb.Artifact(
-            f"{run.name.replace('-', '_')}_best_weights", type="weights"
-        )
-        artifact.add_file(TEMP_WEIGHTS_PATH)
-        run.log_artifact(artifact)
-
-
-def log_step(
-    run_type,
-    metrics,
-    epoch=None,
-    **kwargs,
-):
-    log_dict = {f"{run_type}_{k}": v for k, v in metrics.items()}
-    if epoch is not None:
-        log_dict["epoch"] = epoch
-    logger.info(log_dict)
-    wandb.log(log_dict, **kwargs)
-
-    _step_metrics[run_type].append(metrics)
-
-
-_step_metrics = defaultdict(lambda: [])
-
-
-def compute_metrics(
-    logits, preds, label_ids, task_ids, loss, runtime, ignore_index=None
-):
-    metrics = {
-        # Think bAbI wants all or nothing accuracy. Can ignore padding
-        # though because it's
-        "loss": loss,
-        "examples_per_second": len(preds) / runtime,
-        "sample_size": len(preds),
-    }
-    is_correct = ((preds == label_ids) | (label_ids == ignore_index)).all(axis=1)
-    metrics["accuracy"] = is_correct.mean()
-    solved_tasks = 0
-    for task in set(task_ids):
-        metrics[f"accuracy_task_{task}"] = is_correct[task_ids == task].mean()
-        if metrics[f"accuracy_task_{task}"] >= 0.95:
-            solved_tasks += 1
-    metrics["solved_tasks"] = solved_tasks
-    return metrics
-
-
-def log_summary(run_type):
-    metrics_df = pd.DataFrame(_step_metrics[run_type])
-    for agg_method in ["min", "max"]:
-        for metric, value in metrics_df.agg(agg_method).items():
-            wandb.run.summary[f"{run_type}_{metric}_{agg_method}"] = value
 
 
 def train(config, run):
@@ -476,6 +350,52 @@ def train(config, run):
         )
         artifact.add_file(TEMP_WEIGHTS_PATH)
         run.log_artifact(artifact)
+
+
+def log_step(
+    run_type,
+    metrics,
+    epoch=None,
+    **kwargs,
+):
+    log_dict = {f"{run_type}_{k}": v for k, v in metrics.items()}
+    if epoch is not None:
+        log_dict["epoch"] = epoch
+    logger.info(log_dict)
+    wandb.log(log_dict, **kwargs)
+
+    _step_metrics[run_type].append(metrics)
+
+
+_step_metrics = defaultdict(lambda: [])
+
+
+def compute_metrics(
+    logits, preds, label_ids, task_ids, loss, runtime, ignore_index=None
+):
+    metrics = {
+        # Think bAbI wants all or nothing accuracy. Can ignore padding
+        # though because it's
+        "loss": loss,
+        "examples_per_second": len(preds) / runtime,
+        "sample_size": len(preds),
+    }
+    is_correct = ((preds == label_ids) | (label_ids == ignore_index)).all(axis=1)
+    metrics["accuracy"] = is_correct.mean()
+    solved_tasks = 0
+    for task in set(task_ids):
+        metrics[f"accuracy_task_{task}"] = is_correct[task_ids == task].mean()
+        if metrics[f"accuracy_task_{task}"] >= 0.95:
+            solved_tasks += 1
+    metrics["solved_tasks"] = solved_tasks
+    return metrics
+
+
+def log_summary(run_type):
+    metrics_df = pd.DataFrame(_step_metrics[run_type])
+    for agg_method in ["min", "max"]:
+        for metric, value in metrics_df.agg(agg_method).items():
+            wandb.run.summary[f"{run_type}_{metric}_{agg_method}"] = value
 
 
 class ConfigWrapper:

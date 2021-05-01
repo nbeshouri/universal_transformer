@@ -60,9 +60,12 @@ class TransformerModelBase(nn.Module):
             tgt_key_padding_mask=~target_padding_mask,
             memory_key_padding_mask=~source_padding_mask,
         )
+        extra_output = {}
+        if isinstance(output, tuple):
+            output, extra_output = output
         output = output.permute(1, 0, 2)
         output = self.output_linear(output)
-        return output
+        return output, extra_output
 
 
 class BagOfVectorsEncoder(nn.Module):

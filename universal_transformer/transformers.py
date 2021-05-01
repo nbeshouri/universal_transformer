@@ -115,6 +115,7 @@ class UniversalTransformerEncoder(nn.Module):
         transition_dropout=0.2,
         transition_type="fully_connected",
         transition_padding_type="same",
+        dynamic_halting_weight=None,
     ):
         super().__init__()
         self.max_steps = max_steps
@@ -273,7 +274,7 @@ class UniversalTransformerEncoder(nn.Module):
             new_state = (state * update_weights) + (new_state * (1 - update_weights))
             step += 1
 
-        return new_state
+        return new_state, remainders, n_updates
 
 
 class UniversalTransformerDecoder(UniversalTransformerEncoder):
@@ -330,6 +331,13 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
 
         """
 
+        extra_output = {}
+
+        if self.halting_threshold is not None:
+            memory, input_remainders, input_n_updates = memory
+            extra_output["input_remainders"] = input_remainders.T
+            extra_output["input_n_updates"] = input_n_updates.T
+
         def step_func(state, step):
             state = self.positional_embedding(state)
             state = self.temporal_embedding(state, step)
@@ -359,7 +367,14 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
             state = self.norm_3(state)
             return state
 
-        return self._run_steps(tgt, step_func)
+        output = self._run_steps(tgt, step_func)
+
+        if self.halting_threshold:
+            output, output_remainders, output_n_updates = output
+            extra_output["output_remainders"] = output_remainders.T
+            extra_output["output_n_updates"] = output_n_updates.T
+
+        return output, extra_output
 
 
 class FullyConnectedTransitionFunction(nn.Module):
