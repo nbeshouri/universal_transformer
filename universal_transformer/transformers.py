@@ -210,8 +210,6 @@ class UniversalTransformerEncoder(nn.Module):
     def _run_dynamic_halting_loop(self, state, step_func):
         # Note: To make it easier to compare, I've kept the structure
         # and variable names from page 14 of the paper.
-        # I'm also not really doing anything with n_updates, but
-        # presumably might use them for analysis in the feature.
 
         device = state.device
         # halting_probability is a per-position value that determines
@@ -331,7 +329,7 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
 
         """
 
-        extra_output = {}
+        extra_output = {'decoder_attention_weights': []}
 
         if self.halting_threshold is not None:
             memory, input_remainders, input_n_updates = memory
@@ -351,13 +349,14 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
             state = state + self.dropout_1(state_2)
 
             state = self.norm_1(state)
-            state_2 = self.multihead_attn(
+            state_2, weights = self.multihead_attn(
                 state,
                 memory,
                 memory,
                 attn_mask=memory_mask,
                 key_padding_mask=memory_key_padding_mask,
-            )[0]
+            )
+            extra_output['decoder_attention_weights'].append(weights)
             state = state + self.dropout_2(state_2)
 
             state = self.norm_2(state)
