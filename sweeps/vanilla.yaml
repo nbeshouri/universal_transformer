@@ -19,7 +19,7 @@ parameters:
   batch_size:
     value: 128
   lr:
-    value: 0.00005
+    value: 0.0001
   log:
     value: null
   learning_rate_decay_schedule:
