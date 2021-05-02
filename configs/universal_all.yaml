@@ -26,7 +26,7 @@ checkpoint_metric:
 dataset.debug:
   value: False
 dataset.task:
-  value: 3
+  value: 'all'
 dataset.version:
   value: '1k'
 model.nhead:
