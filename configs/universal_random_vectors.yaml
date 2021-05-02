@@ -1,5 +1,7 @@
 wandb_version: 1
 tokenizer:
+  value: 'en_core_web_md'
+vectors:
   value: 'random'
 vectors.vector_size:
   value: 128
@@ -10,7 +12,7 @@ model:
 optimizer:
   value: 'adam'
 epochs:
-  value: 200
+  value: 400
 batch_size:
   value: 128
 lr:
@@ -33,3 +35,5 @@ model.nhead:
   value: 2
 model.max_steps:
   value: 6
+model.halting_threshold:
+  value: 0.9
