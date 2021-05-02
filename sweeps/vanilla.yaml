@@ -35,6 +35,6 @@ parameters:
   dataset.version:
     value: '1k'
   model.nhead:
-    value: [2, 3]
+    values: [2, 3]
   model.num_layers:
     values: [3, 6]
