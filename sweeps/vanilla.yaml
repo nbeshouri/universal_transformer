@@ -15,11 +15,11 @@ parameters:
   optimizer:
     value: 'adam'
   epochs:
-    value: 320
+    value: 400
   batch_size:
-    values: [128]
+    value: 128
   lr:
-    values: [0.0001, 0.001]
+    values: 0.00005
   log:
     value: null
   learning_rate_decay_schedule:
@@ -35,6 +35,6 @@ parameters:
   dataset.version:
     value: '1k'
   model.nhead:
-    value: 2
+    value: [2, 3]
   model.num_layers:
     values: [3, 6]
