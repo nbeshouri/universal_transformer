@@ -6,7 +6,7 @@ vectors:
 dataset:
   value: 'babi'
 model:
-  value: 'vanilla'
+  value: 'vanilla_transformer'
 optimizer:
   value: 'adam'
 epochs:

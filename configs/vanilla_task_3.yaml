@@ -6,7 +6,7 @@ vectors:
 dataset:
   value: 'babi'
 model:
-  value: 'vanilla'
+  value: 'vanilla_transformer'
 optimizer:
   value: 'adam'
 epochs:
@@ -33,3 +33,5 @@ model.nhead:
   value: 2
 model.num_layers:
   value: 3
+model.transition_type:
+  value: 'fully_connected'
