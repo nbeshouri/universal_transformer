@@ -342,7 +342,7 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
 
         extra_output = {'decoder_attention_weights': []}
 
-        if self.halting_threshold is not None:
+        if isinstance(memory, tuple):
             memory, input_remainders, input_n_updates = memory
             extra_output["input_remainders"] = input_remainders.T
             extra_output["input_n_updates"] = input_n_updates.T
@@ -379,7 +379,7 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
 
         output = self._run_steps(tgt, step_func)
 
-        if self.halting_threshold:
+        if isinstance(memory, tuple):
             output, output_remainders, output_n_updates = output
             extra_output["output_remainders"] = output_remainders.T
             extra_output["output_n_updates"] = output_n_updates.T
