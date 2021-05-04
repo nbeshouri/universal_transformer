@@ -1,0 +1,45 @@
+wandb_version: 1
+tokenizer:
+  value: 'en_core_web_md'
+vectors:
+  value: 'en_core_web_md'
+dataset:
+  value: 'babi'
+model:
+  value: 'universal_transformer'
+optimizer:
+  value: 'adam'
+epochs:
+  value: 400
+batch_size:
+  value: 128
+lr:
+  value: 0.0001
+log:
+  value: null
+learning_rate_decay_schedule:
+  value: null
+log_freq:
+  value: null
+checkpoint_metric:
+  value: 'accuracy'
+dataset.debug:
+  value: False
+dataset.task:
+  value: 'all'
+dataset.version:
+  value: '1k'
+model.nhead:
+  value: 2
+model.encoder_max_steps:
+  value: 6
+model.decoder_max_steps:
+  value: 1
+model.encoder_halting_threshold:
+  value: 0.9
+model.decoder_halting_threshold:
+  value: null
+model.transition_type:
+  value: 'fully_connected'
+dynamic_halting_loss_weight:
+  value: 0.001

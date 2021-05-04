@@ -66,18 +66,30 @@ class UniversalTransformer(nn.Transformer):
         dropout=0.1,
         max_length=5000,
         max_steps=6,
+        encoder_max_steps=None,
+        decoder_max_steps=None,
+        encoder_halting_threshold=None,
+        decoder_halting_threshold=None,
         halting_threshold=None,
         transition_hidden_size=None,
         transition_dropout=0.2,
         transition_type="fully_connected",
     ):
+        if encoder_max_steps is None:
+            encoder_max_steps = max_steps
+        if decoder_max_steps is None:
+            decoder_max_steps = max_steps
+        if encoder_halting_threshold is None:
+            encoder_halting_threshold = halting_threshold
+        if decoder_halting_threshold is None:
+            decoder_halting_threshold = halting_threshold
         encoder = UniversalTransformerEncoder(
             d_model=d_model,
             nhead=nhead,
             dropout=dropout,
             max_length=max_length,
-            max_steps=max_steps,
-            halting_threshold=halting_threshold,
+            max_steps=encoder_max_steps,
+            halting_threshold=encoder_halting_threshold,
             transition_hidden_size=transition_hidden_size,
             transition_dropout=transition_dropout,
             transition_type=transition_type,
@@ -87,8 +99,8 @@ class UniversalTransformer(nn.Transformer):
             nhead=nhead,
             dropout=dropout,
             max_length=max_length,
-            max_steps=max_steps,
-            halting_threshold=halting_threshold,
+            max_steps=decoder_max_steps,
+            halting_threshold=decoder_halting_threshold,
             transition_hidden_size=transition_hidden_size,
             transition_dropout=transition_dropout,
             transition_type=transition_type,
@@ -115,7 +127,6 @@ class UniversalTransformerEncoder(nn.Module):
         transition_dropout=0.2,
         transition_type="fully_connected",
         transition_padding_type="same",
-        dynamic_halting_weight=None,
     ):
         super().__init__()
         self.max_steps = max_steps
