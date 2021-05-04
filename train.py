@@ -88,18 +88,18 @@ def run_model_on_dataset(
         )
 
         if config.dynamic_halting_loss_weight:
-            input_halting_loss = extra_output["input_n_updates"] + extra_output["input_remainders"]
-            input_halting_loss *= batch_input_ids_padding_mask
-            input_halting_loss = input_halting_loss.sum() / batch_input_ids_padding_mask.sum()
+            if "input_n_updates" in extra_output:
+                input_halting_loss = extra_output["input_n_updates"] + extra_output["input_remainders"]
+                input_halting_loss *= batch_input_ids_padding_mask
+                input_halting_loss = input_halting_loss.sum() / batch_input_ids_padding_mask.sum()
+                loss += config.dynamic_halting_loss_weight * input_halting_loss
 
-            mask = batch_output_ids_padding_mask[:, 1:]
-            output_halting_loss = extra_output["output_n_updates"] + extra_output["output_remainders"]
-            output_halting_loss *= mask
-            output_halting_loss = input_halting_loss.sum() / mask.sum()
-
-            loss += config.dynamic_halting_loss_weight * (
-                input_halting_loss + output_halting_loss
-            )
+            if "output_n_updates" in extra_output:
+                mask = batch_output_ids_padding_mask[:, 1:]
+                output_halting_loss = extra_output["output_n_updates"] + extra_output["output_remainders"]
+                output_halting_loss *= mask
+                output_halting_loss = input_halting_loss.sum() / mask.sum()
+                loss += config.dynamic_halting_loss_weight * output_halting_loss
 
         total_loss += loss.item() * len(batch[0])  # Convert from mean to sum.
 
