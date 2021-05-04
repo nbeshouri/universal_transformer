@@ -10,7 +10,7 @@ model:
 optimizer:
   value: 'adam'
 epochs:
-  value: 400
+  value: 600
 batch_size:
   value: 64
 lr:
