@@ -500,6 +500,10 @@ class Conv1dDepthwise(nn.Module):
 
 
 class PositionalEncoding(nn.Module):
+    """
+    This implementation was adapted from
+    https://pytorch.org/tutorials/beginner/transformer_tutorial.html
+    """
     def __init__(self, d_model, dropout=0.1, max_length=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)
