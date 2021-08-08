@@ -47,8 +47,8 @@ class TokenizerBase:
 
     def fit(self, texts, max_tokens=None):
         if self.lower:
-            texts = map(str.lower, texts)
-        tokens = tuple(chain(*map(self._tokenize, texts)))
+            texts = list(map(str.lower, texts))
+        tokens = list(chain(*self._tokenize(texts)))
         if max_tokens is None:
             max_tokens = len(set(tokens))
 
@@ -72,34 +72,27 @@ class TokenizerBase:
             token_id: token for token, token_id in self.token_to_id.items()
         }
 
-    def tokenize(self, text):
+    def tokenize(self, texts):
         if self.lower:
-            text = text.lower()
+            texts = [text.lower() for text in texts]
+        return self._tokenize(texts)
 
-        tokens = []
-
-        if self.sos_token is not None:
-            tokens.append(self.sos_token)
-
-        for token in self._tokenize(text):
-            if self.token_to_id is not None and token not in self.token_to_id:
-                token = self.unknown_token
-            tokens.append(token)
-
-        if self.eos_token is not None:
-            tokens.append(self.eos_token)
-
-        return tokens
-
-    def _tokenize(self, text):
+    def _tokenize(self, texts):
         raise NotImplementedError()
 
-    def encode(self, text):
-        tokens = self.tokenize(text)
-        return [self.token_to_id[token] for token in tokens]
-
-    def encode_texts(self, texts):
-        encoded_texts = list(map(self.encode, texts))
+    def encode(self, texts):
+        if isinstance(texts, str):
+            return self.encode([texts])[0]
+        encoded_texts = []
+        for tokens in self.tokenize(texts):
+            encoded_text = []
+            if self.sos_token is not None:
+                encoded_text.append(self.token_to_id[self.sos_token])
+            for token in tokens:
+                encoded_text.append(self.token_to_id[token])
+            if self.eos_token is not None:
+                encoded_text.append(self.token_to_id[self.eos_token])
+            encoded_texts.append(encoded_text)
         max_len = max(map(len, encoded_texts))
         for encoded_text in encoded_texts:
             for _ in range(max_len - len(encoded_text)):
@@ -116,12 +109,14 @@ class SpacyTokenizer(TokenizerBase):
     def __init__(self, name, **kwargs):
         super().__init__(hash_key=name, **kwargs)
         import spacy
+        self.spacy_model = spacy.load(name, disable=["ner", "tagger", "parser", "attribute_ruler", "lemmatizer"])
 
-        self.spacy_model = spacy.load(name, disable=["tagger", "parser", "ner"])
-
-    def _tokenize(self, text):
-        return tuple(token.text for token in self.spacy_model.tokenizer(text))
-
+    def _tokenize(self, texts):
+        docs = self.spacy_model.pipe(texts, disable=["ner", "tagger", "parser", "attribute_ruler", "lemmatizer"])
+        tokens = []
+        for doc in docs:
+            tokens.append(tuple(token.text for token in doc))
+        return tokens
 
 def get_tokenizer(config):
     key = ("tokenizer", config.tokenizer)

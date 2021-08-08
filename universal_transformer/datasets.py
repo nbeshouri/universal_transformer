@@ -142,7 +142,7 @@ class BabiDataset:
 
 def texts_to_tensors(texts, tokenizer):
     """Convert a sequence of texts and labels to a dataset."""
-    token_ids_seqs = tokenizer.encode_texts(texts)
+    token_ids_seqs = tokenizer.encode(texts)
     seq_length_max = len(token_ids_seqs[0])
     pad_token_id = tokenizer.token_to_id[tokenizer.pad_token]
     lengths = [
@@ -176,7 +176,7 @@ def get_dataset(config, tokenizer=None):
     raise KeyError("Dataset not found!")
 
 
-@memory.cache(ignore=["tokenizer"])
+# @memory.cache(ignore=["tokenizer"])
 def _get_dataset(cls, tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple):
     # TODO: tokenizer_kwargs_tuple is here just for the caching. There's
     # really no reason why we couldn't be creating the tokenizer here directly. It's
