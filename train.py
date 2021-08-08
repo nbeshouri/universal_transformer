@@ -263,7 +263,7 @@ def train(config, run):
             )
             log_step("test", test_metrics, step=step, epoch=epoch)
 
-    if config.checkpoint_metric is not None and run.name is not None:
+    if config.checkpoint_metric is not None and run.name is not None and config.save_weights:
         # Save the best model weights.
         artifact = wandb.Artifact(
             f"{run.name.replace('-', '_')}_best_weights", type="weights"

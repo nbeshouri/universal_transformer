@@ -45,12 +45,20 @@ class TokenizerBase:
             if token is not None
         )
 
-    def fit(self, texts, max_tokens=None):
-        if self.lower:
-            texts = list(map(str.lower, texts))
-        tokens = list(chain(*self._tokenize(texts)))
-        if max_tokens is None:
-            max_tokens = len(set(tokens))
+    def fit(self, *, texts=None, text_batch_iter=None, max_tokens=None):
+
+        counter = Counter()
+
+        def fit_batch(batch):
+            if self.lower:
+                batch = list(map(str.lower, batch))
+            counter.update(list(chain(*self._tokenize(batch))))
+
+        if texts is not None:
+            fit_batch(texts)
+        elif text_batch_iter is not None:
+            for batch in text_batch_iter:
+                fit_batch(batch)
 
         self.token_to_id = {}
 
@@ -64,7 +72,9 @@ class TokenizerBase:
         if self.pad_token is not None:
             assert self.token_to_id[self.pad_token] == 0
 
-        for token, count in Counter(tokens).most_common(max_tokens):
+        if max_tokens is None:
+            max_tokens = len(counter)
+        for token, count in counter.most_common(max_tokens):
             self.token_to_id[token] = token_i
             token_i += 1
 

@@ -66,7 +66,7 @@ class BabiDataset:
         logger.info(f"Starting to fit tokenizer.")
         stories_flat = tuple(map(lambda x: " ".join(x), stories))
         if fit_tokenizer:
-            tokenizer.fit(stories_flat + answers)
+            tokenizer.fit(texts=stories_flat + answers)
         logger.info("Done fitting tokenizer.")
 
         logger.info(f"Starting to convert stories.")
