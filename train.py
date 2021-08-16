@@ -1,6 +1,7 @@
 import argparse
 import os
 from collections import defaultdict
+from itertools import chain
 from time import perf_counter
 
 import numpy as np
@@ -28,8 +29,25 @@ def run_model_on_dataset(
     scheduler=None,
     teacher_forcing=True,
 ):
+    # dataloader = DataLoader(
+    #     dataset, shuffle=True, batch_size=config.batch_size, pin_memory=True
+    # )
+    # The custom sampler is required to get the datalaoder to pass
+    # a list of indices to the dataset.
+    sampler = torch.utils.data.sampler.BatchSampler(
+        torch.utils.data.sampler.RandomSampler(dataset),
+        batch_size=config.batch_size,
+        drop_last=False,
+    )
+
+    # If you don't override collate but do override sampler, it'll
+    # insert an extra dimension at the front for each batch in the
+    # training loop.
+    def my_collate(x):
+        return x[0]
+
     dataloader = DataLoader(
-        dataset, shuffle=True, batch_size=config.batch_size, pin_memory=True
+        dataset, pin_memory=True, sampler=sampler, collate_fn=my_collate
     )
 
     total_loss = 0
@@ -89,14 +107,20 @@ def run_model_on_dataset(
 
         if config.dynamic_halting_loss_weight:
             if "input_n_updates" in extra_output:
-                input_halting_loss = extra_output["input_n_updates"] + extra_output["input_remainders"]
+                input_halting_loss = (
+                    extra_output["input_n_updates"] + extra_output["input_remainders"]
+                )
                 input_halting_loss *= batch_input_ids_padding_mask
-                input_halting_loss = input_halting_loss.sum() / batch_input_ids_padding_mask.sum()
+                input_halting_loss = (
+                    input_halting_loss.sum() / batch_input_ids_padding_mask.sum()
+                )
                 loss += config.dynamic_halting_loss_weight * input_halting_loss
 
             if "output_n_updates" in extra_output:
                 mask = batch_output_ids_padding_mask[:, 1:]
-                output_halting_loss = extra_output["output_n_updates"] + extra_output["output_remainders"]
+                output_halting_loss = (
+                    extra_output["output_n_updates"] + extra_output["output_remainders"]
+                )
                 output_halting_loss *= mask
                 output_halting_loss = input_halting_loss.sum() / mask.sum()
                 loss += config.dynamic_halting_loss_weight * output_halting_loss
@@ -122,10 +146,7 @@ def run_model_on_dataset(
             or yield_freq is not None
             and (i + 1) % yield_freq == 0
         ):
-            logits = np.concatenate(logits, axis=0)
-            yield np.array(logits), np.array(preds), np.array(label_ids), np.array(
-                task_ids
-            ), total_loss / batches_since_yield
+            yield None, preds, label_ids, task_ids, total_loss / batches_since_yield
             total_loss = 0
             preds = []
             logits = []
@@ -136,8 +157,8 @@ def run_model_on_dataset(
 
 def train(config, run):
     # Load stuff based on the config.
-    tokenizer = tokenizers.get_tokenizer(config)
-    data, tokenizer = datasets.get_dataset(config, tokenizer)
+    tokenizer, output_tokenizer = tokenizers.get_tokenizers(config)
+    data, tokenizer = datasets.get_dataset(config, tokenizer, output_tokenizer)
     config.train_size = len(data.train)
     config.val_size = len(data.val)
 
@@ -263,7 +284,11 @@ def train(config, run):
             )
             log_step("test", test_metrics, step=step, epoch=epoch)
 
-    if config.checkpoint_metric is not None and run.name is not None and config.save_weights:
+    if (
+        config.checkpoint_metric is not None
+        and run.name is not None
+        and config.save_weights
+    ):
         # Save the best model weights.
         artifact = wandb.Artifact(
             f"{run.name.replace('-', '_')}_best_weights", type="weights"
@@ -300,14 +325,32 @@ def compute_metrics(
         "examples_per_second": len(preds) / runtime,
         "sample_size": len(preds),
     }
-    is_correct = ((preds == label_ids) | (label_ids == ignore_index)).all(axis=1)
-    metrics["accuracy"] = is_correct.mean()
-    solved_tasks = 0
-    for task in set(task_ids):
-        metrics[f"accuracy_task_{task}"] = is_correct[task_ids == task].mean()
-        if metrics[f"accuracy_task_{task}"] >= 0.95:
-            solved_tasks += 1
-    metrics["solved_tasks"] = solved_tasks
+
+    correct_sents = []
+    correct_tokens = []
+    for pred, target in zip(preds, label_ids):
+        sent_correct = True
+        for pred_id, target_id in zip(pred, target):
+            if target_id == ignore_index:
+                continue
+            correct_tokens.append(pred_id == target_id)
+            if pred_id != target_id:
+                sent_correct = False
+        correct_sents.append(sent_correct)
+    metrics["sent_accuracy"] = np.mean(correct_sents)
+    metrics["token_accuracy"] = np.mean(correct_tokens)
+
+    # TODO: This is some hack crap, but need a way to not have this
+    # run for non-babi stuff.
+    if len(set(task_ids)) > 1:
+        solved_tasks = 0
+        for task in set(task_ids):
+            correct_sents = np.array(correct_sents)
+            metrics[f"accuracy_task_{task}"] = correct_sents[task_ids == task].mean()
+            if metrics[f"accuracy_task_{task}"] >= 0.95:
+                solved_tasks += 1
+        metrics["solved_tasks"] = solved_tasks
+
     return metrics
 
 

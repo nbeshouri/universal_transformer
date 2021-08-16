@@ -26,6 +26,8 @@ class TransformerModelBase(nn.Module):
         self.embedding = nn.Embedding.from_pretrained(
             torch.FloatTensor(embedding_matrix)
         )
+        # TODO: Should be a param or something for sentence encoder
+        # since it's not used for everything.
         if group_story_sents:
             self.sent_encoder = BagOfVectorsEncoder(self.embedding_size)
         self.output_linear = nn.Linear(self.embedding_size, self.vocab_size)
@@ -41,7 +43,7 @@ class TransformerModelBase(nn.Module):
         source = self.embedding(source_ids)
         target = self.embedding(target_ids)
 
-        if self.group_story_sents:
+        if len(source.shape) == 4:
             source = self.sent_encoder(source)
 
         source = source.permute(1, 0, 2)

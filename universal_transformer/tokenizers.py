@@ -52,7 +52,7 @@ class TokenizerBase:
         def fit_batch(batch):
             if self.lower:
                 batch = list(map(str.lower, batch))
-            counter.update(list(chain(*self._tokenize(batch))))
+            counter.update(list(chain(*self.tokenize(batch))))
 
         if texts is not None:
             fit_batch(texts)
@@ -99,6 +99,8 @@ class TokenizerBase:
             if self.sos_token is not None:
                 encoded_text.append(self.token_to_id[self.sos_token])
             for token in tokens:
+                if token not in self.token_to_id:
+                    token = self.unknown_token
                 encoded_text.append(self.token_to_id[token])
             if self.eos_token is not None:
                 encoded_text.append(self.token_to_id[self.eos_token])
@@ -115,23 +117,31 @@ class TokenizerBase:
 
 @register_class(("tokenizer", "en_core_web_md"), name="en_core_web_md", lower=True)
 @register_class(("tokenizer", "en_core_web_lg"), name="en_core_web_lg", lower=True)
+@register_class(("tokenizer", "de_core_news_md"), name="de_core_news_md", lower=True)
 class SpacyTokenizer(TokenizerBase):
     def __init__(self, name, **kwargs):
         super().__init__(hash_key=name, **kwargs)
         import spacy
-        self.spacy_model = spacy.load(name, disable=["ner", "tagger", "parser", "attribute_ruler", "lemmatizer"])
+
+        self.spacy_model = spacy.load(
+            name, disable=["ner", "tagger", "parser", "attribute_ruler", "lemmatizer"]
+        )
 
     def _tokenize(self, texts):
-        docs = self.spacy_model.pipe(texts, disable=["ner", "tagger", "parser", "attribute_ruler", "lemmatizer"])
+        docs = self.spacy_model.pipe(
+            texts, disable=["ner", "tagger", "parser", "attribute_ruler", "lemmatizer"]
+        )
         tokens = []
         for doc in docs:
             tokens.append(tuple(token.text for token in doc))
         return tokens
 
-def get_tokenizer(config):
-    key = ("tokenizer", config.tokenizer)
-    if key in registry:
-        cls, kwargs = registry[key]
+
+def get_tokenizers(config):
+    # TODO: Had to hack this up pretty good to handle two tokenizers.
+
+    def create_tokenizer(tokenizer_name):
+        cls, kwargs = registry[("tokenizer", tokenizer_name)]
         accepted_args = set(cls.__init__.__code__.co_varnames)
         accepted_args.remove("self")
         kwargs.update(
@@ -142,4 +152,12 @@ def get_tokenizer(config):
             }
         )
         return cls(**kwargs)
-    raise KeyError("Tokenizer not found!")
+
+    tokenizer = None
+    if config.tokenizer is not None:
+        tokenizer = create_tokenizer(config.tokenizer)
+    output_tokenizer = None
+    if config.output_tokenizer is not None:
+        output_tokenizer = create_tokenizer(config.output_tokenizer)
+
+    return tokenizer, output_tokenizer

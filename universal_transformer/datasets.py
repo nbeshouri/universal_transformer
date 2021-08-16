@@ -19,7 +19,13 @@ memory = joblib.Memory(
 @register_class(("dataset", "babi"))
 class BabiDataset:
     def __init__(
-        self, tokenizer, task="all", version="10k", group_story_sents=True, debug=False
+        self,
+        tokenizer,
+        output_tokenizer,
+        task="all",
+        version="10k",
+        group_story_sents=True,
+        debug=False,
     ):
         self.debug = debug
         self.group_story_sents = group_story_sents
@@ -140,6 +146,118 @@ class BabiDataset:
         return line
 
 
+class WMTTorchDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        *,
+        hf_dataset,
+        split,
+        input_lang,
+        output_lang,
+        tokenizer,
+        output_tokenizer,
+        debug,
+    ):
+        self.hf_dataset = hf_dataset
+        self.split = split
+        self.input_lang = input_lang
+        self.output_lang = output_lang
+        self.tokenizer = tokenizer
+        self.output_tokenizer = output_tokenizer
+        self.debug = debug
+
+    def __len__(self):
+        if self.debug:
+            return 100
+        return len(self.hf_dataset[self.split])
+
+    def __getitem__(self, item):
+        if torch.is_tensor(item):
+            item = item.tolist()
+        if isinstance(item, int):
+            raise NotImplementedError()
+
+        texts = self.hf_dataset[self.split][item]["translation"]
+        if isinstance(item, int):
+            texts = [texts]
+        # TODO: These are coming in as ints, which is slower because
+        # I can't batch them on the spacy side. See below for how to
+        # fix: https://discuss.pytorch.org/t/force-dataloader-to-fetch-batched-index-from-custom-batch-sampler/86656/3
+
+        input_texts = [text[self.input_lang] for text in texts]
+        batch_input_ids, batch_input_ids_padding_mask = texts_to_tensors(
+            input_texts, self.tokenizer
+        )
+
+        output_texts = [text[self.output_lang] for text in texts]
+        batch_output_ids, batch_output_ids_padding_mask = texts_to_tensors(
+            output_texts, self.output_tokenizer
+        )
+
+        batch_task_ids = torch.zeros(len(texts))
+
+        return (
+            batch_input_ids,
+            batch_output_ids,
+            batch_input_ids_padding_mask,
+            batch_output_ids_padding_mask,
+            batch_task_ids,
+        )
+
+
+@register_class(("dataset", "wmt"))
+class WTMDataset:
+    def __init__(self, tokenizer, output_tokenizer, debug=False):
+        from datasets import load_dataset
+
+        dataset = load_dataset("wmt14", "de-en")
+
+        def get_train_iter(language):
+            batch_size = 50000
+            length = len(dataset["train"])
+            if debug:
+                batch_size = 100
+                length = 100
+            for i in range(0, length, batch_size):
+                chunk = dataset["train"][i : i + batch_size]["translation"]
+                yield [example[language] for example in chunk]
+
+        logger.info("Fitting input tokenizer.")
+        tokenizer.fit(text_batch_iter=get_train_iter("de"))
+        logger.info("Done fitting input tokenizer.")
+        logger.info("Fitting output tokenizer.")
+        output_tokenizer.fit(text_batch_iter=get_train_iter("en"))
+        logger.info("Done fitting output tokenizer.")
+
+        self.train = WMTTorchDataset(
+            hf_dataset=dataset,
+            split="train",
+            input_lang="de",
+            output_lang="en",
+            tokenizer=tokenizer,
+            output_tokenizer=output_tokenizer,
+            debug=debug,
+        )
+        self.val = WMTTorchDataset(
+            hf_dataset=dataset,
+            split="validation",
+            input_lang="de",
+            output_lang="en",
+            tokenizer=tokenizer,
+            output_tokenizer=output_tokenizer,
+            debug=debug,
+        )
+        self.test = WMTTorchDataset(
+            hf_dataset=dataset,
+            split="test",
+            input_lang="de",
+            output_lang="en",
+            tokenizer=tokenizer,
+            output_tokenizer=output_tokenizer,
+            debug=debug,
+        )
+
+
 def texts_to_tensors(texts, tokenizer):
     """Convert a sequence of texts and labels to a dataset."""
     token_ids_seqs = tokenizer.encode(texts)
@@ -157,28 +275,46 @@ def texts_to_tensors(texts, tokenizer):
     return token_ids_seqs, att_masks
 
 
-def get_dataset(config, tokenizer=None):
+# TODO: Not doing anything with the output tokenizer and not fitting
+# it anywhere.
+def get_dataset(config, tokenizer=None, output_tokenizer=None):
     key = ("dataset", config.dataset)
     if key in registry:
         cls, dataset_kwargs = registry[key]
         accepted_args = set(cls.__init__.__code__.co_varnames)
         accepted_args.remove("self")
-        dataset_kwargs.update(
-            {k.replace("dataset.", ""): v for k, v in config.items() if "dataset." in k}
-        )
+        for key, value in config.items():
+            if "dataset." not in key:
+                continue
+            key = key.replace("dataset.", "")
+            if key in accepted_args:
+                dataset_kwargs[key] = value
         dataset_kwargs_tuple = tuple(sorted(dataset_kwargs.items()))
-        tokenizer_kwargs = {k: v for k, v in config.items() if "tokenizer." in k}
+        tokenizer_kwargs = {k: v for k, v in config.items() if "tokenizer" in k}
         tokenizer_kwargs_tuple = tuple(sorted(tokenizer_kwargs.items()))
         return _get_dataset(
-            cls, tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple
+            cls,
+            tokenizer,
+            output_tokenizer,
+            dataset_kwargs_tuple,
+            tokenizer_kwargs_tuple,
         )
 
     raise KeyError("Dataset not found!")
 
 
 # @memory.cache(ignore=["tokenizer"])
-def _get_dataset(cls, tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple):
+def _get_dataset(
+    cls, tokenizer, output_tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple
+):
     # TODO: tokenizer_kwargs_tuple is here just for the caching. There's
     # really no reason why we couldn't be creating the tokenizer here directly. It's
     # worthless if it isn't fitted, so it's really dependent on the dataset.
-    return cls(tokenizer=tokenizer, **dict(dataset_kwargs_tuple)), tokenizer
+    return (
+        cls(
+            tokenizer=tokenizer,
+            output_tokenizer=output_tokenizer,
+            **dict(dataset_kwargs_tuple),
+        ),
+        tokenizer,
+    )

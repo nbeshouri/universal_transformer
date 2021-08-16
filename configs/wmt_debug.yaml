@@ -1,0 +1,35 @@
+wandb_version: 1
+tokenizer:
+  value: 'en_core_web_md'
+output_tokenizer:
+  value: 'en_core_web_md'
+vectors:
+  value: 'en_core_web_md'
+dataset:
+  value: 'wmt'
+model:
+  value: 'universal_transformer'
+optimizer:
+  value: 'adam'
+epochs:
+  value: 200
+batch_size:
+  value: 4
+lr:
+  value: 0.0001
+log:
+  value: null
+learning_rate_decay_schedule:
+  value: null
+log_freq:
+  value: null
+checkpoint_metric:
+  value: 'accuracy'
+dataset.debug:
+  value: True
+model.nhead:
+  value: 3
+model.max_steps:
+  value: 6
+model.halting_threshold:
+  value: 0.9

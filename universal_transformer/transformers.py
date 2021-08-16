@@ -340,7 +340,7 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
 
         """
 
-        extra_output = {'decoder_attention_weights': []}
+        extra_output = {"decoder_attention_weights": []}
 
         if isinstance(memory, tuple):
             memory, input_remainders, input_n_updates = memory
@@ -367,7 +367,7 @@ class UniversalTransformerDecoder(UniversalTransformerEncoder):
                 attn_mask=memory_mask,
                 key_padding_mask=memory_key_padding_mask,
             )
-            extra_output['decoder_attention_weights'].append(weights)
+            extra_output["decoder_attention_weights"].append(weights)
             state = state + self.dropout_2(state_2)
 
             state = self.norm_2(state)
@@ -504,6 +504,7 @@ class PositionalEncoding(nn.Module):
     This implementation was adapted from
     https://pytorch.org/tutorials/beginner/transformer_tutorial.html
     """
+
     def __init__(self, d_model, dropout=0.1, max_length=5000):
         super(PositionalEncoding, self).__init__()
         self.dropout = nn.Dropout(p=dropout)

@@ -33,6 +33,7 @@ class RandomVectors(VectorsBase):
 
 @register_class(("vectors", "en_core_web_md"), name="en_core_web_md")
 @register_class(("vectors", "en_core_web_lg"), name="en_core_web_lg")
+@register_class(("vectors", "de_core_news_md"), name="de_core_news_md")
 class SpacyVectors(VectorsBase):
     def __init__(self, name, **kwargs):
         import spacy
@@ -41,7 +42,12 @@ class SpacyVectors(VectorsBase):
         super().__init__(**kwargs)
 
     def get_vector(self, token):
-        return self.spacy_model.tokenizer(token).vector
+        vector = self.spacy_model.tokenizer(token).vector
+        # If spacy doesn't know the word, it maps to zero vector.
+        # I'd rather use a
+        if not vector.any():
+            vector = np.random.normal(0, 1, vector.shape)
+        return vector
 
 
 def get_vectors(config, tokenizer):
