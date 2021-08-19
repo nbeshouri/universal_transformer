@@ -15,6 +15,7 @@ from torch.utils.data import DataLoader
 from transformers import get_linear_schedule_with_warmup
 
 from universal_transformer import datasets, logger, models, tokenizers, vectors
+from universal_transformer.wandb_utils import ConfigWrapper
 
 TEMP_WEIGHTS_PATH = "state_dict.pickle"
 
@@ -174,6 +175,8 @@ def train(config, run):
 
     best_performance = None
     step = 0
+    run_history = defaultdict(lambda: [])
+
     for epoch in range(1, config.epochs + 1):
         if config.optimizer == "adam":
             optimizer = Adam(model.parameters(), lr=config.lr)
@@ -214,7 +217,9 @@ def train(config, run):
                 runtime=perf_counter() - mini_batch_start_time,
                 ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
             )
-            log_step("train", train_metrics, step=step, epoch=epoch)
+            log_step(
+                "train", train_metrics, step=step, epoch=epoch, run_history=run_history
+            )
 
             # Validate
             model.eval()
@@ -236,8 +241,10 @@ def train(config, run):
                     runtime=perf_counter() - start_time,
                     ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
                 )
-                log_step("val", val_metrics, step=step, epoch=epoch)
-                log_summary("val")
+                log_step(
+                    "val", val_metrics, step=step, epoch=epoch, run_history=run_history
+                )
+                log_summary("val", run_history)
 
                 if config.checkpoint_metric is not None:
                     if (
@@ -282,7 +289,9 @@ def train(config, run):
                 runtime=perf_counter() - start_time,
                 ignore_index=tokenizer.token_to_id[tokenizer.pad_token],
             )
-            log_step("test", test_metrics, step=step, epoch=epoch)
+            log_step(
+                "test", test_metrics, step=step, epoch=epoch, run_history=run_history
+            )
 
     if (
         config.checkpoint_metric is not None
@@ -296,11 +305,14 @@ def train(config, run):
         artifact.add_file(TEMP_WEIGHTS_PATH)
         run.log_artifact(artifact)
 
+    return run_history
+
 
 def log_step(
     run_type,
     metrics,
     epoch=None,
+    run_history=None,
     **kwargs,
 ):
     log_dict = {f"{run_type}_{k}": v for k, v in metrics.items()}
@@ -308,11 +320,8 @@ def log_step(
         log_dict["epoch"] = epoch
     logger.info(log_dict)
     wandb.log(log_dict, **kwargs)
-
-    _step_metrics[run_type].append(metrics)
-
-
-_step_metrics = defaultdict(lambda: [])
+    if run_history is not None:
+        run_history[run_type].append(metrics)
 
 
 def compute_metrics(
@@ -354,31 +363,11 @@ def compute_metrics(
     return metrics
 
 
-def log_summary(run_type):
-    metrics_df = pd.DataFrame(_step_metrics[run_type])
+def log_summary(run_type, run_history):
+    metrics_df = pd.DataFrame(run_history[run_type])
     for agg_method in ["min", "max"]:
         for metric, value in metrics_df.agg(agg_method).items():
             wandb.run.summary[f"{run_type}_{metric}_{agg_method}"] = value
-
-
-class ConfigWrapper:
-    def __init__(self, config):
-        self.config = config
-
-    def get(self, key, default=None):
-        return self.config.get(key, default)
-
-    def __getattr__(self, key):
-        try:
-            return getattr(self.config, key)
-        except:
-            pass
-
-    def __setattr__(self, key, value):
-        if key == "config":
-            self.__dict__["config"] = value
-        else:
-            setattr(self.config, key, value)
 
 
 if __name__ == "__main__":
