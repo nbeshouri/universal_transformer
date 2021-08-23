@@ -13,8 +13,7 @@ class TokenizerBase:
         eos_token="[EOS]",
         unknown_token="[UNK]",
         pad_token="[PAD]",
-        pad=True,
-        seq_length_max=500,
+        max_vocab_size=float("inf"),
         **kwargs,
     ):
         self.id_to_token = None
@@ -25,8 +24,6 @@ class TokenizerBase:
         self.eos_token = eos_token
         self.unknown_token = unknown_token
         self.pad_token = pad_token
-        self.pad = pad
-        self.seq_length_max = seq_length_max
         self.special_tokens = (
             self.pad_token,
             self.eos_token,
@@ -44,8 +41,9 @@ class TokenizerBase:
             )
             if token is not None
         )
+        self.max_vocab_size = max_vocab_size
 
-    def fit(self, *, texts=None, text_batch_iter=None, max_tokens=None):
+    def fit(self, *, texts=None, text_batch_iter=None):
 
         counter = Counter()
 
@@ -72,9 +70,7 @@ class TokenizerBase:
         if self.pad_token is not None:
             assert self.token_to_id[self.pad_token] == 0
 
-        if max_tokens is None:
-            max_tokens = len(counter)
-        for token, count in counter.most_common(max_tokens):
+        for token, count in counter.most_common(min(self.max_vocab_size, len(counter))):
             self.token_to_id[token] = token_i
             token_i += 1
 
@@ -93,26 +89,59 @@ class TokenizerBase:
     def encode(self, texts):
         if isinstance(texts, str):
             return self.encode([texts])[0]
-        encoded_texts = []
+
+        id_seqs = []
         for tokens in self.tokenize(texts):
-            encoded_text = []
-            if self.sos_token is not None:
-                encoded_text.append(self.token_to_id[self.sos_token])
+            id_seq = []
             for token in tokens:
                 if token not in self.token_to_id:
                     token = self.unknown_token
-                encoded_text.append(self.token_to_id[token])
-            if self.eos_token is not None:
-                encoded_text.append(self.token_to_id[self.eos_token])
-            encoded_texts.append(encoded_text)
-        max_len = max(map(len, encoded_texts))
-        for encoded_text in encoded_texts:
-            for _ in range(max_len - len(encoded_text)):
-                encoded_text.append(self.token_to_id[self.pad_token])
-        return encoded_texts
+                id_seq.append(self.token_to_id[token])
+            id_seqs.append(id_seq)
 
-    def decode(self, ids):
-        " ".join(self.id_to_token[id] for id in ids)
+        return self._post_process(
+            id_seqs,
+            pad_id=self.token_to_id[self.pad_token] if self.pad_token else None,
+            sos_id=self.token_to_id[self.sos_token] if self.sos_token else None,
+            eos_id=self.token_to_id[self.eos_token] if self.eos_token else None,
+        )
+
+    @staticmethod
+    def _post_process(
+        ids_seqs, *, pad_id=None, sos_id=None, eos_id=None, max_length=float("inf")
+    ):
+        extra_tokens = 0
+        if sos_id is not None:
+            extra_tokens += 1
+        if eos_id is not None:
+            extra_tokens += 1
+
+        new_id_seqs = []
+        for id_seq in ids_seqs:
+            new_seq = []
+            if sos_id is not None:
+                new_seq.append(sos_id)
+            if len(id_seq) + extra_tokens > max_length:
+                new_seq.extend(id_seq[: max_length - extra_tokens])
+            else:
+                new_seq.extend(id_seq)
+            if eos_id is not None:
+                new_seq.append(eos_id)
+            new_id_seqs.append(new_seq)
+
+        longest_seq_len = max(map(len, new_id_seqs))
+        for id_seq in new_id_seqs:
+            for _ in range(longest_seq_len - len(id_seq)):
+                id_seq.append(pad_id)
+
+        return new_id_seqs
+
+    def decode(self, id_seqs):
+        output = []
+        for id_seq in id_seqs:
+            decoded = " ".join(self.id_to_token[id] for id in id_seq)
+            output.append(decoded)
+        return output
 
 
 @register_class(("tokenizer", "en_core_web_md"), name="en_core_web_md", lower=True)
@@ -129,12 +158,52 @@ class SpacyTokenizer(TokenizerBase):
 
     def _tokenize(self, texts):
         docs = self.spacy_model.pipe(
-            texts, disable=["ner", "tagger", "parser", "attribute_ruler", "lemmatizer"]
+            texts,
+            disable=["ner", "tagger", "parser", "attribute_ruler", "lemmatizer"],
         )
         tokens = []
         for doc in docs:
             tokens.append(tuple(token.text for token in doc))
         return tokens
+
+
+@register_class(
+    ("tokenizer", "hugging_face_word_level"), lower=True, max_vocab_size=20000
+)
+class HuggingFaceWordLevelTokenizer(TokenizerBase):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        from tokenizers import Tokenizer, models, normalizers, pre_tokenizers
+
+        self.tokenizer = Tokenizer(models.WordLevel(unk_token=self.unknown_token))
+        self.tokenizer.pre_tokenizer = pre_tokenizers.Whitespace()
+        if self.lower:
+            self.tokenizer.normalizer = normalizers.Lowercase()
+
+    def fit(self, *, texts=None, text_batch_iter=None, max_tokens=None):
+        from tokenizers import trainers
+
+        trainer = trainers.WordLevelTrainer(
+            vocab_size=self.max_vocab_size, special_tokens=list(self.special_tokens)
+        )
+        self.tokenizer.train_from_iterator(text_batch_iter, trainer=trainer)
+        self.token_to_id = self.tokenizer.get_vocab()
+        self.id_to_token = {
+            token_id: token for token, token_id in self.token_to_id.items()
+        }
+
+    def encode(self, texts):
+        id_seqs = self.tokenizer.encode_batch(texts)
+        id_seqs = [id_seq.ids for id_seq in id_seqs]
+        return self._post_process(
+            id_seqs,
+            pad_id=self.token_to_id[self.pad_token] if self.pad_token else None,
+            sos_id=self.token_to_id[self.sos_token] if self.sos_token else None,
+            eos_id=self.token_to_id[self.eos_token] if self.eos_token else None,
+        )
+
+    def decode(self, id_seqs):
+        self.tokenizer.decode_batch(id_seqs)
 
 
 def get_tokenizers(config):

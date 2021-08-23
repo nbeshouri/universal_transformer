@@ -1,10 +1,14 @@
 wandb_version: 1
 tokenizer:
-  value: 'en_core_web_md'
+  value: 'hugging_face_word_level'
 output_tokenizer:
-  value: 'en_core_web_md'
+  value: 'hugging_face_word_level'
 vectors:
-  value: 'en_core_web_md'
+  value: 'random'
+output_vectors:
+  value: 'random'
+vectors.vector_size:
+  value: 90
 dataset:
   value: 'wmt'
 model:
@@ -12,7 +16,7 @@ model:
 optimizer:
   value: 'adam'
 epochs:
-  value: 200
+  value: 10
 batch_size:
   value: 4
 lr:

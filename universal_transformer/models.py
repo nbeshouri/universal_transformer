@@ -12,7 +12,9 @@ from universal_transformer.transformers import UniversalTransformer, VanillaTran
 class TransformerModelBase(nn.Module):
     def __init__(
         self,
+        *,
         embedding_matrix=None,
+        output_embedding_matrix=None,
         transformer_class=None,
         group_story_sents=True,
         **kwargs
@@ -26,6 +28,17 @@ class TransformerModelBase(nn.Module):
         self.embedding = nn.Embedding.from_pretrained(
             torch.FloatTensor(embedding_matrix)
         )
+        if output_embedding_matrix is None:
+            self.output_embedding = self.embedding
+            self.output_vocab_size = self.vocab_size
+            self.output_embedding_size = self.embedding_size
+        else:
+            self.output_embedding = nn.Embedding.from_pretrained(
+                torch.FloatTensor(embedding_matrix)
+            )
+            self.output_vocab_size = output_embedding_matrix.shape[0]
+            self.output_embedding_size = output_embedding_matrix.shape[1]
+
         # TODO: Should be a param or something for sentence encoder
         # since it's not used for everything.
         if group_story_sents:
@@ -41,7 +54,7 @@ class TransformerModelBase(nn.Module):
         target_padding_mask=None
     ):
         source = self.embedding(source_ids)
-        target = self.embedding(target_ids)
+        target = self.output_embedding(target_ids)
 
         if len(source.shape) == 4:
             source = self.sent_encoder(source)
@@ -91,7 +104,7 @@ class BagOfVectorsEncoder(nn.Module):
         return x
 
 
-def get_model(config, embedding_matrix=None):
+def get_model(config, embedding_matrix=None, output_embedding_matrix=None):
     key = ("model", config.model)
     if key in registry:
         cls, kwargs = registry[key]
@@ -100,8 +113,8 @@ def get_model(config, embedding_matrix=None):
         kwargs.update(
             {k.replace("model.", ""): v for k, v in config.items() if "model." in k}
         )
-        if embedding_matrix is not None:
-            kwargs["embedding_matrix"] = embedding_matrix
+        kwargs["embedding_matrix"] = embedding_matrix
+        kwargs["output_embedding_matrix"] = output_embedding_matrix
         return cls(**kwargs)
 
     raise KeyError("Model not found!")

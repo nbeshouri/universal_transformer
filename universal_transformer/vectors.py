@@ -52,9 +52,12 @@ class SpacyVectors(VectorsBase):
 
 def get_vectors(config, tokenizer):
     if config.vectors is None:
-        return None
-    key = ("vectors", config.vectors)
-    if key in registry:
+        return None, None
+
+    # TODO: Had to hack this up pretty good to handle two vectors.
+
+    def get_vectors(name):
+        key = ("vectors", name)
         cls, kwargs = registry[key]
         accepted_args = set(cls.__init__.__code__.co_varnames)
         accepted_args.remove("self")
@@ -67,4 +70,12 @@ def get_vectors(config, tokenizer):
             **kwargs
         )
         return vectors_obj.get_vectors()
-    raise KeyError("Vectors not found!")
+
+    vectors = None
+    if config.vectors is not None:
+        vectors = get_vectors(config.vectors)
+    output_vectors = None
+    if config.output_vectors is not None:
+        output_vectors = get_vectors(config.output_vectors)
+
+    return vectors, output_vectors

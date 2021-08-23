@@ -5,9 +5,7 @@ import pytest
 from train import train
 from universal_transformer.wandb_utils import ConfigWrapper
 
-@pytest.mark.parametrize(
-    "config_file",
-    ["universal_test.yaml", "wmt_test.yaml"])
+@pytest.mark.parametrize("config_file", ["universal_test.yaml", "wmt_test.yaml"])
 def test_train(config_file):
     os.environ["WANDB_MODE"] = "dryrun"
     os.environ["WANDB_CONFIG_PATHS"] = f"../configs/{config_file}"

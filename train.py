@@ -163,9 +163,9 @@ def train(config, run):
     config.train_size = len(data.train)
     config.val_size = len(data.val)
 
-    embedding_matrix = vectors.get_vectors(config, tokenizer)
+    embedding_matrix, output_embedding_matrix = vectors.get_vectors(config, tokenizer)
 
-    model = models.get_model(config, embedding_matrix)
+    model = models.get_model(config, embedding_matrix, output_embedding_matrix)
 
     if config.log is not None:
         wandb.watch(model, log=config.log)
