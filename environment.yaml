@@ -1,6 +1,7 @@
 name: universal_transformer
 dependencies:
   - python=3.8.11
+  - pip=21.2.2
   - pip:
     - joblib==1.0.1
     - jupyter==1.0.0
