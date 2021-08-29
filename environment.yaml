@@ -1,3 +1,4 @@
+name: universal_transformer
 dependencies:
   - python=3.8.11
   - pip:
