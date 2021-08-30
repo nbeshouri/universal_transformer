@@ -1,10 +1,14 @@
 wandb_version: 1
 tokenizer:
-  value: 'en_core_web_md'
+  value: 'hugging_face_word_level'
 output_tokenizer:
-  value: 'en_core_web_md'
+  value: 'hugging_face_word_level'
 vectors:
-  value: 'en_core_web_md'
+  value: 'random'
+output_vectors:
+  value: 'random'
+vectors.vector_size:
+  value: 90
 dataset:
   value: 'wmt'
 model:
@@ -12,9 +16,9 @@ model:
 optimizer:
   value: 'adam'
 epochs:
-  value: 200
+  value: 1
 batch_size:
-  value: 4
+  value: 128
 lr:
   value: 0.0001
 log:
@@ -22,14 +26,10 @@ log:
 learning_rate_decay_schedule:
   value: null
 log_freq:
-  value: null
-checkpoint_metric:
-  value: 'accuracy'
+  value: 100
 dataset.debug:
-  value: True
+  value: False
 model.nhead:
   value: 3
 model.max_steps:
   value: 6
-model.halting_threshold:
-  value: 0.9

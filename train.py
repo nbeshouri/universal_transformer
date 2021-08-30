@@ -53,7 +53,6 @@ def run_model_on_dataset(
 
     total_loss = 0
     preds = []
-    logits = []
     label_ids = []
     task_ids = []
     batches_since_yield = 0
@@ -136,7 +135,6 @@ def run_model_on_dataset(
                 scheduler.step()
 
         batch_logits = batch_logits.detach().cpu().numpy()
-        logits.append(batch_logits)
         preds.extend(np.argmax(batch_logits, axis=-1))
         label_ids.extend(output_ids_targets.detach().cpu().numpy())
         task_ids.extend(batch_task_ids.detach().cpu().numpy())
@@ -147,10 +145,9 @@ def run_model_on_dataset(
             or yield_freq is not None
             and (i + 1) % yield_freq == 0
         ):
-            yield None, preds, label_ids, task_ids, total_loss / batches_since_yield
+            yield preds, label_ids, task_ids, total_loss / batches_since_yield
             total_loss = 0
             preds = []
-            logits = []
             label_ids = []
             task_ids = []
             batches_since_yield = 0
@@ -159,7 +156,7 @@ def run_model_on_dataset(
 def train(config, run):
     # Load stuff based on the config.
     tokenizer, output_tokenizer = tokenizers.get_tokenizers(config)
-    data, tokenizer = datasets.get_dataset(config, tokenizer, output_tokenizer)
+    data, tokenizer, output_tokenizer = datasets.get_dataset(config, tokenizer, output_tokenizer)
     config.train_size = len(data.train)
     config.val_size = len(data.val)
 
@@ -198,7 +195,7 @@ def train(config, run):
         model.train()
         mini_batch_start_time = perf_counter()
 
-        for logits, preds, label_ids, task_ids, loss in run_model_on_dataset(
+        for preds, label_ids, task_ids, loss in run_model_on_dataset(
             model,
             data.train,
             tokenizer,
@@ -209,7 +206,6 @@ def train(config, run):
         ):
             step += 1
             train_metrics = compute_metrics(
-                logits=logits,
                 preds=preds,
                 label_ids=label_ids,
                 task_ids=task_ids,
@@ -225,7 +221,7 @@ def train(config, run):
             model.eval()
             with torch.no_grad():
                 start_time = perf_counter()
-                logits, preds, label_ids, task_ids, loss = iter(
+                preds, label_ids, task_ids, loss = iter(
                     next(
                         run_model_on_dataset(
                             model, data.val, tokenizer, config, yield_freq=None
@@ -233,7 +229,6 @@ def train(config, run):
                     )
                 )
                 val_metrics = compute_metrics(
-                    logits=logits,
                     preds=preds,
                     label_ids=label_ids,
                     task_ids=task_ids,
@@ -268,7 +263,7 @@ def train(config, run):
         model.eval()
         with torch.no_grad():
             start_time = perf_counter()
-            logits, preds, label_ids, task_ids, loss = iter(
+            preds, label_ids, task_ids, loss = iter(
                 next(
                     run_model_on_dataset(
                         model,
@@ -281,7 +276,6 @@ def train(config, run):
                 )
             )
             test_metrics = compute_metrics(
-                logits=logits,
                 preds=preds,
                 label_ids=label_ids,
                 task_ids=task_ids,
@@ -325,7 +319,7 @@ def log_step(
 
 
 def compute_metrics(
-    logits, preds, label_ids, task_ids, loss, runtime, ignore_index=None
+    preds, label_ids, task_ids, loss, runtime, ignore_index=None
 ):
     metrics = {
         # Think bAbI wants all or nothing accuracy. Can ignore padding
