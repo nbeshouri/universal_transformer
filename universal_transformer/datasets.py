@@ -303,7 +303,7 @@ def get_dataset(config, tokenizer=None, output_tokenizer=None):
     raise KeyError("Dataset not found!")
 
 
-# @memory.cache(ignore=["tokenizer"])
+@memory.cache(ignore=["tokenizer", "output_tokenizer"])
 def _get_dataset(
     cls, tokenizer, output_tokenizer, dataset_kwargs_tuple, tokenizer_kwargs_tuple
 ):
@@ -316,5 +316,5 @@ def _get_dataset(
             output_tokenizer=output_tokenizer,
             **dict(dataset_kwargs_tuple),
         ),
-        tokenizer,
+        tokenizer, output_tokenizer
     )
