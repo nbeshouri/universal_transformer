@@ -14,6 +14,8 @@ class TokenizerBase:
         unknown_token="[UNK]",
         pad_token="[PAD]",
         max_vocab_size=float("inf"),
+        max_legnth=float("inf"),
+        fixed_length=None,
         **kwargs,
     ):
         self.id_to_token = None
@@ -42,6 +44,10 @@ class TokenizerBase:
             if token is not None
         )
         self.max_vocab_size = max_vocab_size
+        self.max_length = max_legnth
+        self.fixed_length = fixed_length
+        if self.fixed_length is not None:
+            self.max_length = self.fixed_length
 
     def fit(self, *, texts=None, text_batch_iter=None):
 
@@ -106,10 +112,7 @@ class TokenizerBase:
             eos_id=self.token_to_id[self.eos_token] if self.eos_token else None,
         )
 
-    @staticmethod
-    def _post_process(
-        ids_seqs, *, pad_id=None, sos_id=None, eos_id=None, max_length=float("inf")
-    ):
+    def _post_process(self, ids_seqs, *, pad_id=None, sos_id=None, eos_id=None):
         extra_tokens = 0
         if sos_id is not None:
             extra_tokens += 1
@@ -121,17 +124,20 @@ class TokenizerBase:
             new_seq = []
             if sos_id is not None:
                 new_seq.append(sos_id)
-            if len(id_seq) + extra_tokens > max_length:
-                new_seq.extend(id_seq[: max_length - extra_tokens])
+            if len(id_seq) + extra_tokens > self.max_length:
+                new_seq.extend(id_seq[: self.max_length - extra_tokens])
             else:
                 new_seq.extend(id_seq)
             if eos_id is not None:
                 new_seq.append(eos_id)
             new_id_seqs.append(new_seq)
 
-        longest_seq_len = max(map(len, new_id_seqs))
+        if self.max_length == float("inf"):
+            padded_length = max(map(len, new_id_seqs))
+        else:
+            padded_length = self.max_length
         for id_seq in new_id_seqs:
-            for _ in range(longest_seq_len - len(id_seq)):
+            for _ in range(padded_length - len(id_seq)):
                 id_seq.append(pad_id)
 
         return new_id_seqs

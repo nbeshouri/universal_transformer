@@ -316,5 +316,6 @@ def _get_dataset(
             output_tokenizer=output_tokenizer,
             **dict(dataset_kwargs_tuple),
         ),
-        tokenizer, output_tokenizer
+        tokenizer,
+        output_tokenizer,
     )
