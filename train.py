@@ -52,10 +52,11 @@ def run_model_on_dataset(
     )
 
     total_loss = 0
+    total_token_loss = 0
+    total_token_count = 0
     preds = []
     label_ids = []
     task_ids = []
-    batches_since_yield = 0
     criterion = nn.CrossEntropyLoss(
         ignore_index=tokenizer.token_to_id[tokenizer.pad_token]
     )
@@ -101,10 +102,11 @@ def run_model_on_dataset(
         # Need to flatten the inputs to the criterion so that logits
         # have shape (batch_size *sequences_length, vocab_size) and
         # the targets have shape (batch_size * sequences_length).
-        loss = criterion(
+        token_loss = criterion(
             batch_logits.view(-1, batch_logits.size(-1)), output_ids_targets.reshape(-1)
         )
 
+        loss = token_loss
         if config.dynamic_halting_loss_weight:
             if "input_n_updates" in extra_output:
                 input_halting_loss = (
@@ -114,7 +116,11 @@ def run_model_on_dataset(
                 input_halting_loss = (
                     input_halting_loss.sum() / batch_input_ids_padding_mask.sum()
                 )
-                loss += config.dynamic_halting_loss_weight * input_halting_loss
+                # Can't be += of because pytorch does inplace replacement
+                # and that would affect token_loss.
+                loss = (
+                    token_loss + config.dynamic_halting_loss_weight * input_halting_loss
+                )
 
             if "output_n_updates" in extra_output:
                 mask = batch_output_ids_padding_mask[:, 1:]
@@ -122,10 +128,19 @@ def run_model_on_dataset(
                     extra_output["output_n_updates"] + extra_output["output_remainders"]
                 )
                 output_halting_loss *= mask
-                output_halting_loss = input_halting_loss.sum() / mask.sum()
-                loss += config.dynamic_halting_loss_weight * output_halting_loss
+                output_halting_loss = output_halting_loss.sum() / mask.sum()
+                loss = (
+                    token_loss
+                    + config.dynamic_halting_loss_weight * output_halting_loss
+                )
 
-        total_loss += loss.item() * len(batch[0])  # Convert from mean to sum.
+        # Loss is averaged by the number of non-padding tokens.
+        # Here I'm storing the raw value so that I average later
+        # by the number of tokens between yields.
+        token_count = batch_output_ids_padding_mask[:, 1:].sum().item()
+        total_token_count += token_count
+        total_loss += loss.item() * token_count
+        total_token_loss += token_loss.item() * token_count
 
         if model.training:
             optimizer.zero_grad()
@@ -138,25 +153,27 @@ def run_model_on_dataset(
         preds.extend(np.argmax(batch_logits, axis=-1))
         label_ids.extend(output_ids_targets.detach().cpu().numpy())
         task_ids.extend(batch_task_ids.detach().cpu().numpy())
-        batches_since_yield += 1
 
         if (
             i == len(dataloader) - 1
             or yield_freq is not None
             and (i + 1) % yield_freq == 0
         ):
-            yield preds, label_ids, task_ids, total_loss / batches_since_yield
+            yield preds, label_ids, task_ids, total_token_loss / total_token_count, total_loss / total_token_count
             total_loss = 0
+            total_token_loss = 0
+            total_token_count = 0
             preds = []
             label_ids = []
             task_ids = []
-            batches_since_yield = 0
 
 
 def train(config, run):
     # Load stuff based on the config.
     tokenizer, output_tokenizer = tokenizers.get_tokenizers(config)
-    data, tokenizer, output_tokenizer = datasets.get_dataset(config, tokenizer, output_tokenizer)
+    data, tokenizer, output_tokenizer = datasets.get_dataset(
+        config, tokenizer, output_tokenizer
+    )
     config.train_size = len(data.train)
     config.val_size = len(data.val)
 
@@ -195,7 +212,7 @@ def train(config, run):
         model.train()
         mini_batch_start_time = perf_counter()
 
-        for preds, label_ids, task_ids, loss in run_model_on_dataset(
+        for preds, label_ids, task_ids, token_loss, loss in run_model_on_dataset(
             model,
             data.train,
             tokenizer,
@@ -206,6 +223,7 @@ def train(config, run):
         ):
             step += 1
             train_metrics = compute_metrics(
+                token_loss=token_loss,
                 preds=preds,
                 label_ids=label_ids,
                 task_ids=task_ids,
@@ -221,7 +239,7 @@ def train(config, run):
             model.eval()
             with torch.no_grad():
                 start_time = perf_counter()
-                preds, label_ids, task_ids, loss = iter(
+                preds, label_ids, task_ids, token_loss, loss = iter(
                     next(
                         run_model_on_dataset(
                             model, data.val, tokenizer, config, yield_freq=None
@@ -229,6 +247,7 @@ def train(config, run):
                     )
                 )
                 val_metrics = compute_metrics(
+                    token_loss=token_loss,
                     preds=preds,
                     label_ids=label_ids,
                     task_ids=task_ids,
@@ -263,7 +282,7 @@ def train(config, run):
         model.eval()
         with torch.no_grad():
             start_time = perf_counter()
-            preds, label_ids, task_ids, loss = iter(
+            preds, label_ids, task_ids, token_loss, loss = iter(
                 next(
                     run_model_on_dataset(
                         model,
@@ -276,6 +295,7 @@ def train(config, run):
                 )
             )
             test_metrics = compute_metrics(
+                token_loss=token_loss,
                 preds=preds,
                 label_ids=label_ids,
                 task_ids=task_ids,
@@ -319,16 +339,19 @@ def log_step(
 
 
 def compute_metrics(
-    preds, label_ids, task_ids, loss, runtime, ignore_index=None
+    preds, label_ids, task_ids, token_loss, loss, runtime, ignore_index=None
 ):
     metrics = {
         # Think bAbI wants all or nothing accuracy. Can ignore padding
         # though because it's
         "loss": loss,
+        "token_loss": token_loss,
+        "perplexity": np.exp(token_loss),
         "examples_per_second": len(preds) / runtime,
         "sample_size": len(preds),
     }
 
+    # Accuracy
     correct_sents = []
     correct_tokens = []
     for pred, target in zip(preds, label_ids):
