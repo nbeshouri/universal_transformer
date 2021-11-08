@@ -16,7 +16,7 @@ model:
 optimizer:
   value: 'adam'
 epochs:
-  value: 1
+  value: 2
 batch_size:
   value: 128
 lr:
@@ -26,13 +26,13 @@ log:
 learning_rate_decay_schedule:
   value: null
 log_freq:
-  value: 1
+  value: 100
 dataset.debug:
   value: False
 model.nhead:
   value: 3
 model.max_steps:
-  value: 6
+  value: 3
 tokenizer.fixed_length:
   value: 100
 model.halting_threshold:
