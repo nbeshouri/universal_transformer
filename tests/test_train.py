@@ -2,8 +2,9 @@ import os
 import wandb
 import pytest
 
-from train import train
+from train import Trainer
 from universal_transformer.wandb_utils import ConfigWrapper
+
 
 @pytest.mark.parametrize("config_file", ["universal_test.yaml", "wmt_test.yaml"])
 def test_train(config_file):
@@ -13,5 +14,6 @@ def test_train(config_file):
     print(run)
     config = ConfigWrapper(wandb.config)
     config.device = "cpu"
-    run_history = train(config, run)
+    trainer = Trainer(config, run)
+    run_history = trainer.train()
     assert run_history["train"][0]["loss"] > run_history["train"][-1]["loss"]
